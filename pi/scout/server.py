@@ -145,6 +145,14 @@ class Scout:
             "v": round(imu.v, 2) if imu else 0, "w": round(imu.w, 2) if imu else 0,
         }
 
+    def scan_frame(self):
+        """PROTOCOL.md section 5, the scan frame. None when there is no lidar yet."""
+        snap = self.lidar.scan if self.lidar.connected else None
+        if not snap:
+            return None
+        return {"type": "scan", "t": self.t(), "hz": snap["hz"], "mode": snap["mode"],
+                "pts": snap["pts"], "gaps": snap["gaps"]}
+
     def run_log(self):
         header = {"type": "run", "space": self.run["space"], "fw": self.fw(), "started_t": self.run_started_t, "config": dict(self.cfg)}
         return "\n".join(json.dumps(x) for x in [header, *self.buffer]) + "\n"
@@ -156,7 +164,8 @@ class Scout:
             frame = self.telem()
             now = time.monotonic()
             pitch = frame["pitch_deg"] if frame["imu"] else None
-            events, stop = self.audit.step(now, pitch, frame["width_mm"])
+            gaps = self.lidar.scan["gaps"] if (self.lidar.connected and self.lidar.scan) else None
+            events, stop = self.audit.step(now, pitch, frame["width_mm"], gaps)
             if stop:
                 self.esp32.send("S")
             if frame["imu"] and (abs(frame["pitch_deg"]) > 20 or abs(frame["roll_deg"]) > 15):
@@ -173,15 +182,22 @@ class Scout:
                 self.esp32.send("L 0 0")
                 self.led_off_at = None
             self.tick += 1
+            scan = self.scan_frame() if self.tick % (config.TELEM_HZ // 2) == 0 else None
             if self.tick % (config.TELEM_HZ // 2) == 0:      # 2 Hz into the run log
                 self.buffer.append(frame)
-                n_telem = sum(1 for f in self.buffer if f["type"] == "telem")
-                if n_telem > config.RUN_BUFFER_TELEM:
+                if scan:
+                    self.buffer.append(scan)
+                # Telemetry and scans are both droppable; events never are.
+                n_bulk = sum(1 for f in self.buffer if f["type"] in ("telem", "scan"))
+                while n_bulk > config.RUN_BUFFER_TELEM * 2:
                     for i, f in enumerate(self.buffer):
-                        if f["type"] == "telem":
+                        if f["type"] in ("telem", "scan"):
                             del self.buffer[i]
+                            n_bulk -= 1
                             break
-            for f in [*self.pending, frame]:
+                    else:
+                        break
+            for f in [*self.pending, frame] + ([scan] if scan else []):
                 await self.broadcast(json.dumps(f))
             self.pending.clear()
             await asyncio.sleep(period)

@@ -11,6 +11,17 @@ to it by picking whichever rotation is most continuous with the last pose. Posit
 work there: between scans at 5.5 Hz Scout moves about 80 mm, so a wrong 90-degree reading lands
 metres away and is never the cheapest. Heading alone cannot separate the rotations mid-corner.
 
+**Build the room oblong.** A square room has a failure this file cannot fix. Telling the four
+rotations apart leans on the room's shape -- stand a 4 x 5 m room on its side and the extents stop
+matching -- and when the two sides are equal that cue is gone. Then, if Scout turns roughly 90
+degrees while it cannot see (someone leans over the lidar mid-turn), the scan that comes back is
+*identical* to the one it would have produced had it never turned. Both readings fit perfectly;
+nothing in a horizontal scan of an empty rectangle separates them, and furniture does not help
+because the pose is read off the fitted rectangle alone. Measured: a square room comes back from
+that 90 degrees out, an oblong one comes back exact. No gate fixes it -- the deceptive reading is
+the one that looks *more* continuous, not less. Make the two sides differ by more than
+SIZE_REJECT_MM and the problem disappears; `_warn_if_square` says so at lock time.
+
 A wrong pose corrupts the map permanently and a missing one costs nothing, so every check here
 fails closed: no fit, no pose.
 """
@@ -171,6 +182,37 @@ class Pose:
         self.ok = True
         return True
 
+    def _warn_if_square(self):
+        """Announce a room that cannot tell its own quarter turns apart.
+
+        A missing device is logged loudly at startup (rule 9); a room that will silently lie about
+        which way Scout is facing deserves the same. This is the one pose failure that is not
+        fixable in software -- see the module docstring -- so the fix is a tape measure and a
+        shifted wall, and someone has to be told while there is still time to move it.
+        """
+        w, l = self.room
+        if 2 * abs(w - l) <= SIZE_REJECT_MM:
+            log.warning("ROOM IS SQUARE (%d x %d mm): if Scout turns about 90 degrees while the "
+                        "pose is lost, it comes back a quarter turn out and the map is wrong with "
+                        "no warning. Move a wall so the sides differ by more than %d mm.",
+                        w, l, SIZE_REJECT_MM // 2)
+
+    @staticmethod
+    def _read_as(cx, cy, theta, a, b, k):
+        """Read the fitted rectangle as the room, turned through k quarter turns.
+
+        Each quarter turn swaps the extents and moves the room's origin to the next corner, so the
+        same rectangle yields four different poses. Returns (x, y, heading_deg, w, l) for Scout,
+        which sits at the robot frame's origin.
+        """
+        th = theta + k * math.pi / 2
+        ea, eb = (a, b) if k % 2 == 0 else (b, a)
+        ux, uy = math.cos(th), math.sin(th)
+        vx, vy = -math.sin(th), math.cos(th)
+        ox, oy = cx - ea * ux - eb * vx, cy - ea * uy - eb * vy     # the room origin corner
+        px, py = -(ox * ux + oy * uy), -(ox * vx + oy * vy)         # so Scout is at minus that
+        return px, py, (-math.degrees(th) + 180) % 360 - 180, 2 * ea, 2 * eb
+
     def update(self, scan, moving=True):
         """Fit this scan and move the pose. Returns True when the pose is valid.
 
@@ -210,77 +252,60 @@ class Pose:
             cy += mu * math.sin(theta) + mv * math.cos(theta)
             a, b = (u1 - u0) / 2, (v1 - v0) / 2
 
-        # How this rectangle can be read as the locked room: each 90-degree rotation swaps the
-        # extents and moves the origin to the next corner. All four are scored; the ones that put
-        # the short wall where the long wall belongs are thrown out by the size term below.
-        # On the very first fit there is nothing to match against, so the frame is defined here:
-        # x along the longer wall (section 4). Without this the room frame would come out differently
-        # depending on which wall Scout happened to be facing when it started.
-        first = (0 if a >= b else 1) if not self._locked else None
-        best = None
-        for k in (range(4) if first is None else (first,)):
-            th = theta + k * math.pi / 2
-            ea, eb = (a, b) if k % 2 == 0 else (b, a)
-            # the corner that is the room origin, in the robot frame
-            ux, uy = math.cos(th), math.sin(th)
-            vx, vy = -math.sin(th), math.cos(th)
-            ox, oy = cx - ea * ux - eb * vx, cy - ea * uy - eb * vy
-            # the robot sits at the robot frame's origin, so its room coordinates are -corner
-            px, py = -(ox * ux + oy * uy), -(ox * vx + oy * vy)
-            heading = -math.degrees(th)
-            heading = (heading + 180) % 360 - 180
-            cand = (px, py, heading, 2 * ea, 2 * eb)
-            if not self._locked:
-                best = cand
-                break
-            # Match the lock on continuity and on shape. Position carries most of the weight:
-            # between scans at 5.5 Hz Scout can move about 80 mm, so a wrong reading throws the
-            # position metres away and is never the cheapest. Heading alone cannot tell the four
-            # apart while Scout is turning a corner. The size term rules out the two rotations that
-            # would stand the room on its side, which matters most in a nearly square room where
-            # this scan's noisy extents cannot be trusted to say which wall is the long one.
-            # Standing the room on its side is not a reading of the room, it is a different room.
-            # A hard gate, not a penalty: after a long loss the position term is weak, and a soft
-            # penalty lets a 90-degree flip buy its way past and silently mirror the whole map.
-            if abs(2 * ea - self.room[0]) + abs(2 * eb - self.room[1]) > SIZE_REJECT_MM:
-                continue
-            dh = abs((heading - self.heading + 180) % 360 - 180)
-            cost = dh + math.hypot(px - self.x, py - self.y) / JUMP_PER_DEG_MM
-            if best is None or cost < best[0]:
-                best = (cost, *cand)
-
         if not self._locked:
-            px, py, heading, w, l = best
+            # Nothing to match against, so the frame is defined here: x along the longer wall
+            # (section 4). Without this the room frame would come out differently depending on
+            # which wall Scout happened to be facing when it started.
+            px, py, heading, w, l = self._read_as(cx, cy, theta, a, b, 0 if a >= b else 1)
             self.room = (round(w), round(l))
             self._locked = True
+            log.info("room frame locked: %d x %d mm", *self.room)
+            self._warn_if_square()
         else:
-            if best is None:                     # no rotation is the right shape for this room
-                self._lost += 1
-                return self._fail(held)
-            cost, px, py, heading, w, l = best
-            # This rectangle is supposed to be the room, and the room's size is already known. When
-            # it is not, the scan did not see the whole room -- an obstacle is occluding a wall --
-            # and the corner it measured from is the wrong corner, which lands the pose a metre out
-            # while still looking self-consistent. Refuse it.
-            if abs(w - self.room[0]) + abs(l - self.room[1]) > SIZE_REJECT_MM:
-                self._lost += 1
-                return self._fail(held)
-            # The budget grows with every scan since the last accepted pose: after a second of no
-            # fits Scout really has moved, so the honest jump is bigger than it would be at 5.5 Hz.
-            # The budget grows by what Scout could actually have driven while it was lost,
-            # not without bound: at cruise it covers about 80 mm per scan.
-            if cost > min(MAX_JUMP_COST + LOST_BUDGET_PER_SCAN * self._lost, MAX_LOST_BUDGET):
-                # Nothing matches the lock. Scout was picked up, or this is not the same room, so
-                # report no pose rather than a confident wrong one.
+            ceiling = min(MAX_JUMP_COST + LOST_BUDGET_PER_SCAN * self._lost, MAX_LOST_BUDGET)
+            best = None
+            for k in range(4):
+                px, py, heading, w, l = self._read_as(cx, cy, theta, a, b, k)
+                # This rectangle is supposed to be the room, and the room's size is already known.
+                # When it is not, the scan did not see the whole room -- an obstacle is occluding a
+                # wall -- and the corner it measured from is the wrong corner, which lands the pose
+                # a metre out while still looking self-consistent. Refuse it.
+                if abs(w - self.room[0]) + abs(l - self.room[1]) > SIZE_REJECT_MM:
+                    continue
+                dh = abs((heading - self.heading + 180) % 360 - 180)
+                # Match the lock on continuity. Position carries most of the weight: between scans
+                # Scout can move about 80 mm, so a wrong reading throws the position metres away
+                # and is never the cheapest. Heading alone cannot tell the four apart mid-corner.
+                cost = dh + math.hypot(px - self.x, py - self.y) / JUMP_PER_DEG_MM
+                # The budget grows with every scan since the last accepted pose: after a second of
+                # no fits Scout really has moved, so the honest jump is bigger than it would be at
+                # 5.5 Hz. It grows by what Scout could actually have driven, not without bound.
+                if cost > ceiling:
+                    continue
+                if best is None or cost < best[0]:
+                    best = (cost, px, py, heading, w, l)
+
+            if best is not None:
+                _, px, py, heading, w, l = best
+            else:
+                # Nothing matches the lock. Scout was picked up, a wall is hidden, or this is not
+                # the same room, so report no pose rather than a confident wrong one.
                 self._lost += 1
                 if self._lost < RELOCK_AFTER:
                     return self._fail(held)
-                # Give up and re-acquire. The new frame has no relation to the old one, so every
-                # point already on the map is now in the wrong frame: say so and let the server
-                # throw the map away. Silently re-basing would corrupt the map instead.
-                log.warning("pose lost for %d scans (cost %.0f): re-acquiring, the map is void", self._lost, cost)
+                # Give up and re-acquire, defining the frame afresh exactly as a first lock does.
+                # Re-acquiring matters as much as refusing: if no rotation ever matches again --
+                # Scout was carried to another room, or turned far enough while lost that the jump
+                # stays unaffordable -- then without this it would stay blind for the rest of the
+                # run. The new frame has no relation to the old one, so every point already on the
+                # map is now in the wrong frame: say so and let the server throw the map away
+                # rather than silently re-basing it.
+                px, py, heading, w, l = self._read_as(cx, cy, theta, a, b, 0 if a >= b else 1)
+                log.warning("pose lost for %d scans: re-acquiring the room frame, the map is void",
+                            self._lost)
                 self.relocked = True
                 self.room = (round(w), round(l))
+                self._warn_if_square()
             self._lost = 0
 
         self.x, self.y, self.heading, self.ok = px, py, heading, True

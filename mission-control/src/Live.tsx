@@ -3,6 +3,7 @@ import { useStore } from './store';
 import { send, sendConfig, startRecording, stopRecording } from './scout';
 import { ruleFor, type Telem } from './protocol';
 import { verdict } from './verdict';
+import { LidarView } from './LidarView';
 
 const SPEED = 0.5, TURN = 0.5;
 type Dir = 'f' | 'b' | 'l' | 'r';
@@ -66,6 +67,7 @@ export function Live() {
               ? `${width == null ? '--' : cm(width)} cm at full scale · limit ${Math.round(widthLimit)} mm (${cm(widthLimit)} cm)`
               : `limit ${Math.round(widthLimit)} mm`} />
         </div>
+        <LidarView />
         <div className="bottom">
           <Pad drive={drive} telem={telem} />
           <ul className="feed">

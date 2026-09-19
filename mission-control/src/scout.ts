@@ -18,7 +18,7 @@ export function connect(source: Source) {
   generation += 1;
   clearTimeout(watchdog); clearTimeout(reconnectTimer); clearTimeout(replayTimer);
   if (ws) { ws.onclose = null; ws.onmessage = null; ws.close(); ws = null; }
-  store().set({ source, link: 'down', detail: '', telem: null, events: [] });
+  store().set({ source, link: 'down', detail: '', telem: null, scan: null, events: [] });
   if (source.kind === 'live') openSocket(source.url, generation);
   else void playFile(source, generation);
 }
@@ -85,6 +85,11 @@ async function fetchStatus(wsUrl: string, gen: number) {
 function linkDown() { store().set({ link: 'down' }); }
 
 function handleFrame(f: Frame) {
+  if (f.type === 'scan') {
+    store().set({ scan: f });
+    rec?.push(f);            // recorded too, so a saved run replays with the lidar view
+    return;
+  }
   if (f.type === 'telem') {
     store().set({ telem: f, link: 'up' });
     clearTimeout(watchdog);
@@ -111,7 +116,7 @@ async function playFile(source: Extract<Source, { kind: 'replay' }>, gen: number
   const lines: (Frame | RunHeader)[] = [];
   for (const l of text.split('\n')) { if (l.trim()) try { lines.push(JSON.parse(l)); } catch { /* skip bad line */ } }
   const header = lines.find((l): l is RunHeader => l.type === 'run');
-  const frames = lines.filter((l): l is Frame => l.type === 'telem' || l.type === 'event');
+  const frames = lines.filter((l): l is Frame => l.type === 'telem' || l.type === 'event' || l.type === 'scan');
   if (!frames.length) { store().set({ detail: `${source.name}: no frames` }); return; }
   store().set({ detail: `${source.name}  ${header?.space ?? ''}`, scale: header?.config?.scale ?? 1 });
 

@@ -19,7 +19,24 @@ export interface ScoutEvent {
   value?: number; unit?: string; limit?: number; scale?: number; label?: string;
 }
 
-export type Frame = Telem | ScoutEvent;
+// v1.2 scan frame: one whole rotation for drawing, plus the gaps found in it.
+// evidence says how well supported a gap is. An `unverified` gap is an arc of
+// no-returns only, where an opening and a surface that does not reflect look
+// identical, so it must never be shown as a measured opening.
+export type Evidence = 'see_through' | 'step' | 'unverified';
+
+export interface ScanGap {
+  a0: number; mm0: number; a1: number; mm1: number;
+  width_mm: number; span_deg: number; evidence: Evidence;
+}
+
+export interface Scan {
+  type: 'scan'; t: number; hz: number; mode: 'express' | 'standard';
+  pts: [number, number][];   // [angle_deg, mm], mm 0 = no return. Scout frame: 0 ahead, + left.
+  gaps: ScanGap[];
+}
+
+export type Frame = Telem | ScoutEvent | Scan;
 
 export interface Config { slope_limit_deg: number; width_limit_mm: number; scale: number; width_offset_mm: number }
 

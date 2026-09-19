@@ -1,10 +1,23 @@
-"""Both fixtures at once: the simulated course (ground truth) and the real table pen."""
-import sys, json, math, time
+"""Score the room fit against both fixtures at once.
+
+    cd pi && .venv/bin/python tools/check_fit.py
+
+Two environments that fail in opposite directions, so any change to pose.py must be checked
+against both:
+
+  * tools/fixtures/table-pen-scan.json -- one real RPLIDAR scan taken inside an arena of four
+    tables on their sides, in an open lab. Returns escape through every gap, so 43% of them land
+    outside the arena. Its true size is NOT known: measure the pen with a tape.
+  * data/runs/room-scan.ndjson -- the simulated closed room, 4210 x 5090 mm, carrying the true
+    pose in every frame. A ramp against the far wall leaves it about eleven returns, which is the
+    case that defeats peak-finding.
+"""
+import os, sys, json, math, time
 sys.path.insert(0, '.')
 from scout.pose import Pose, fit_room, scan_points
-SP = '/tmp/claude-501/-Users-ryanli-Code-Challenges-HTN-2026-scout/e5073829-b17b-4dcf-9f82-7bc31925ebe7/scratchpad'
+SP = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'fixtures')
 
-sc = json.load(open(SP + '/real-room-scan.json'))['scan']
+sc = json.load(open(os.path.join(SP, 'table-pen-scan.json')))['scan']
 f = fit_room(scan_points(sc))
 if f:
     cx, cy, th, a, b, on = f

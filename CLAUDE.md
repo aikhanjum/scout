@@ -1,6 +1,8 @@
 # Scout
 
-Scout is a small rover that drives itself around a room like a Roomba and draws a 2D accessibility map of it. The lidar does geometry (walls, obstacles, gap widths); the camera does naming (what each obstacle is, including whether it is a ramp). Gaps are compared to the Ontario Building Code's 860 mm clear width and failures get a light, a beep and a spoken verdict. A browser dashboard drives it, shows the live map and replays recorded runs.
+Scout is a small rover that is driven around a room by hand and draws a 2D accessibility map of it as it goes. The lidar does geometry (walls, obstacles, gap widths); the camera does naming (what each obstacle is, including whether it is a ramp). Gaps are compared to the Ontario Building Code's 860 mm clear width and failures get a spoken verdict in the browser. A browser dashboard drives it, shows the live map and replays recorded runs.
+
+**Scout is driven by hand, not autonomously.** A human drives from the laptop with the arrow keys or WASD, on the same screen as the map. `wall_follow` still exists in the protocol, in `pi/scout/wallfollow.py` and in the recorded run, and the Pi still accepts it, but it is no longer being developed and has no button on the dashboard. Do not build new work on it.
 
 **Scout has no IMU and measures no slope.** A ramp meeting a horizontal scan plane looks exactly like a wall, so ramps are labelled by the camera and never judged. Clearance width is the only building-code verdict.
 

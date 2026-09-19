@@ -16,3 +16,6 @@ data/runs/*.ndjson
 
 # playwright screenshots
 .playwright-mcp/
+
+# diagnostic dumps
+pi/tools/scan-dump.json

@@ -6,6 +6,34 @@ Ports, memorise these three: **Pi 8080**, **dashboard 5173**, **fake Scout 8080 
 
 ---
 
+## 0. Build the room
+
+Scout has no odometry and no IMU. Its position comes from fitting the room's rectangle in every
+scan, so the room is not scenery — it is the sensor. Three rules, in order of how badly they bite:
+
+1. **Make it oblong, not square.** One side at least 300 mm longer than the other; 500 mm is
+   better. In a square room a quarter turn looks exactly like no turn at all, so if Scout turns a
+   corner while the fit is momentarily lost it comes back 90° out and every obstacle on the map
+   moves with it, silently. An oblong room recovers from the same event exactly. The service
+   prints `ROOM IS SQUARE` at startup if you got this wrong — move a wall before you demo.
+2. **Close it.** Four walls meeting at the corners with no gaps. A gap lets the beam out into the
+   room beyond, and the fit is then built from whatever it found out there rather than from your
+   walls. Corners are where this goes wrong: walls pushed apart to make the room bigger open up
+   diagonal slots at each corner. Tape or overlap them.
+3. **Keep it clear.** Feet, bags and people standing in it are obstacles that hide walls. Furniture
+   against a wall is fine and is what the camera is there to name.
+
+Check it before you trust it:
+
+```
+cd pi && .venv/bin/python tools/check_pose.py       # on a LIVE Scout: walks every gate, says which failed
+```
+
+Want `4. is it a rectangle?` above 55%. A closed room reads 95%+; below 55% there is no pose and
+therefore no map. `tools/check_room.py` (no hardware needed) shows what various room shapes do.
+
+---
+
 ## 1. Start the robot
 
 Power the Pi. It starts on its own through systemd. Give it 30 seconds, then from the laptop:
@@ -124,6 +152,7 @@ Point the dashboard at `ws://localhost:8081/ws` for the real lidar, or `ws://loc
 
 ```
 cd pi && .venv/bin/python tools/check_audit.py       # clearance and gap logic, 17 checks
+cd pi && .venv/bin/python tools/check_room.py        # pose in simulated rooms, including square ones
 npm run gen                                          # regenerate the replay file
 ```
 

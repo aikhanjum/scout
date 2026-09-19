@@ -1,0 +1,18 @@
+# systemd unit for the Pi. Install:
+#   sudo cp scout.service /etc/systemd/system/ && sudo systemctl enable --now scout
+#   journalctl -u scout -f
+[Unit]
+Description=Scout brain (protocol v1 server on :8080)
+After=network.target
+
+[Service]
+User=pi
+WorkingDirectory=/home/pi/scout/pi
+ExecStart=/home/pi/scout/pi/.venv/bin/python -m scout
+Restart=always
+RestartSec=2
+Environment=SCOUT_LIDAR_OFFSET_DEG=0
+Environment=SCOUT_WIDTH_OFFSET_MM=0
+
+[Install]
+WantedBy=multi-user.target

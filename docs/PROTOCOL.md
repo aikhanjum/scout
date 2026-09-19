@@ -1,12 +1,14 @@
-# Scout protocol, version 1
+# Scout protocol, version 2
 
 This file is the contract between the ESP32 bridge firmware, the Pi service (BRAIN), the dashboard (Mission Control) and the fake Scout. It is frozen. To change it: agree with all three code owners, edit this file first, then the code, and add a line to the changelog at the bottom.
 
 ```
-ESP32 (motors, IMU, watchdog)  <-- USB serial, section 8 -->  Pi 4 (lidar, audit, this protocol)  <-- wifi, sections 1 to 6 -->  dashboard
+ESP32 (motors, watchdog)  <-- USB serial, section 9 -->  Pi 4 (lidar, camera, map, this protocol)  <-- wifi, sections 1 to 7 -->  dashboard
 ```
 
-There is no Hub. The dashboard talks to Scout (the Pi) directly. Anything that speaks sections 1 to 6 (the Pi, `tools/fake-scout`, a replay file) is interchangeable to the dashboard.
+There is no Hub. The dashboard talks to Scout (the Pi) directly. Anything that speaks sections 1 to 7 (the Pi, `tools/fake-scout`, a replay file) is interchangeable to the dashboard.
+
+**What Scout senses.** The lidar does geometry: where the walls are, where obstacles are, how wide the gaps are. The camera does naming: what a given obstacle is, including whether it is a ramp. Nothing measures slope, so a ramp is **labelled, never judged**. Clearance width is the only measurement checked against a building-code limit.
 
 ## 1. Network
 
@@ -14,44 +16,55 @@ There is no Hub. The dashboard talks to Scout (the Pi) directly. Anything that s
 - HTTP on port **8080**. WebSocket at `/ws`. (8080, not 80, so the service never needs root. The fake Scout uses the same port on the laptop.)
 - Every HTTP response carries `Access-Control-Allow-Origin: *`. `OPTIONS` on any path answers `204` with `Access-Control-Allow-Methods: GET, POST` and `Access-Control-Allow-Headers: Content-Type`.
 - Consumers treat 2 s without a `telem` frame as link down, and reconnect forever.
-- A fallback access point is not in v1 (`docs/LATER.md`).
 
 ## 2. Conventions
 
 | Thing | Rule |
 | --- | --- |
 | `t` | Milliseconds since the Pi service started. Players time frames by `t` deltas and never assume a frame rate. |
-| Angles | Degrees. `pitch_deg` positive = nose up. `roll_deg` positive = right side down. `yaw_deg` positive = turned left (counter-clockwise seen from above). |
-| Sweep angle `a` | 0 is straight ahead, negative is right, positive is left. |
-| Distances | Millimetres. `0` means no return or not valid. |
+| Distances | Millimetres, integers. `0` means no return or not valid. |
+| Bearings | Degrees in the robot's frame. `0` is straight ahead, positive to the left, negative to the right, range -180..180. |
+| `heading_deg` | The robot's heading in the room frame, -180..180, positive counter-clockwise seen from above. |
+| Room frame | Origin at one corner of the fitted rectangle, `x_mm` along the room's longer wall, `y_mm` along the shorter, both positive inside the room. Fixed for the life of a run. |
 | `v`, `w` | Forward speed and turn rate, each -1..1. `w` positive = left. |
 | `value` | The raw measurement, always. |
-| `limit` | The limit in effect for that measurement, after scale. |
-| `scale` | The scale applied to that measurement. Always `1.0` for slope. The dashboard shows the full-scale number as `value / scale` and never presents a scaled course number as a building measurement. |
+| `limit` | The limit in effect for that measurement. |
+| `label` | What the camera called a thing, lower case, free text (`"ramp"`, `"chair"`, `"door"`, `"unknown"`). Never used for a pass/fail decision. |
 
 ## 3. HTTP endpoints
 
 | Method and path | Purpose |
 | --- | --- |
 | `GET /status` | JSON below. |
-| `POST /cmd` | One command (section 4) as the JSON body, any `Content-Type`. Replies `{"ok":true}` or `{"ok":false,"err":"..."}`. |
-| `GET /cmd?c=<name>` | Browser-bar testing. `c` is one of `forward`, `back`, `left`, `right` (drive at 0.5), `stop`, `beep`. Same reply as POST. |
-| `GET /runs/latest` | The buffered run as NDJSON (section 6), `Content-Type: application/x-ndjson`. |
-| `GET /` | Reserved for the phone remote page (`docs/LATER.md`). Returns 404 in v1. |
+| `POST /cmd` | One command (section 5) as the JSON body, any `Content-Type`. Replies `{"ok":true}` or `{"ok":false,"err":"..."}`. |
+| `GET /cmd?c=<name>` | Browser-bar testing. `c` is one of `forward`, `back`, `left`, `right` (drive at 0.5), `stop`, `beep`, `roam`. Same reply as POST. |
+| `GET /map` | The current map as one `map` frame (section 6), JSON. The same object Scout broadcasts on `/ws`. |
+| `GET /photo/<id>` | A JPEG still captured when an obstacle was classified, or 404. |
+| `GET /runs/latest` | The buffered run as NDJSON (section 7), `Content-Type: application/x-ndjson`. |
+| `GET /` | Reserved for the phone remote page. Returns 404 in v2. |
 
 `GET /status`:
 
 ```json
-{"proto":1,"fw":"pi 0.1.0 / esp32 0.1.0","mode":"teleop","measuring":false,
- "run":{"active":true,"space":"Table course"},
- "devices":{"esp32":true,"imu":true,"lidar":true},
- "config":{"slope_limit_deg":4.76,"width_limit_mm":860,"scale":1.0,"width_offset_mm":0},
- "uptime_ms":123456,"heap":0,"ip":"172.20.10.4"}
+{"proto":2,"fw":"pi 0.2.0 / esp32 0.2.0","mode":"wall_follow","measuring":false,
+ "run":{"active":true,"space":"E5 room 2024"},
+ "devices":{"esp32":true,"lidar":true,"camera":true},
+ "config":{"width_limit_mm":860,"robot_width_mm":260,"wall_target_mm":300,"cruise":0.4},
+ "uptime_ms":123456,"ip":"172.20.10.4"}
 ```
 
-`devices` says what is physically connected right now. The service runs with any of them missing; each missing device disables only its own feature (section 7).
+`devices` says what is physically connected right now. The service runs with any of them missing; each missing device disables only its own feature (section 8).
 
-## 4. Commands
+## 4. Coordinate frames
+
+Two frames, and everything on the wire says which one it is in.
+
+- **Robot frame.** Used by `scan`. Bearings as in section 2: 0 ahead, positive left. Always valid.
+- **Room frame.** Used by `pose`, `map` and every event position (`x_mm`, `y_mm`). Only valid while `pose` is `true`.
+
+Scout has no odometry and no IMU. The room frame comes from fitting the four walls of the rectangular room in each lidar scan and reading position and heading off that rectangle directly. It does not drift, but it fails outright when fewer than two perpendicular walls are visible — then `pose` goes `false` and consumers must stop placing new points on the map until it comes back. **A false pose is worse than no pose; consumers must honour the flag.**
+
+## 5. Commands
 
 One JSON object per command. Accepted two ways:
 
@@ -61,156 +74,139 @@ One JSON object per command. Accepted two ways:
 ```
 {"cmd":"drive","v":0.6,"w":-0.3}     Teleop. Sets mode to teleop. v forward -1..1, w turn -1..1, positive = left.
 {"cmd":"stop"}                       Stop now. Mode becomes idle. This is E-STOP.
-{"cmd":"mode","mode":"teleop"}       teleop | idle. (wall_follow and bounce are reserved names, not in v1.)
-{"cmd":"run","action":"start","space":"Corridor A"}   Clears the run buffer, emits run_start.
-{"cmd":"run","action":"stop"}                          Emits run_stop. The buffer is kept.
-{"cmd":"mark","label":"heavy door"}  Human checkpoint. Emits a mark event.
-{"cmd":"zero"}                       Calibrate level. Scout must be still on a flat floor for 1 s.
+{"cmd":"mode","mode":"wall_follow"}  idle | teleop | wall_follow.
+{"cmd":"run","action":"start","space":"E5 room 2024"}   Clears the run buffer and the map, emits run_start.
+{"cmd":"run","action":"stop"}                            Emits run_stop. The buffer and the map are kept.
+{"cmd":"mark","label":"heavy door"}  Human checkpoint at Scout's current pose. Emits a mark event.
+{"cmd":"map","action":"clear"}       Forget the map and the room frame, start mapping again from here.
 {"cmd":"beep"}                       Link test.
-{"cmd":"config","slope_limit_deg":4.76,"width_limit_mm":860,"scale":1.0,"width_offset_mm":0}
+{"cmd":"config","width_limit_mm":860,"robot_width_mm":260,"wall_target_mm":300,"cruise":0.4}
 ```
 
 Rules:
 
-- **Teleop watchdog.** In teleop, if no `drive` arrives for 500 ms, Scout stops. The watchdog lives on the ESP32 (section 8), so a Pi crash also stops the motors. The dashboard resends the current `drive` every 100 ms while a key or the joystick is held, and sends `stop` on release.
-- `config` is partial: only the keys present change. Effective width limit = `width_limit_mm * scale`. The slope limit is never scaled. `width_offset_mm` is added to the two side distances to get the width (0 when the lidar sits at the body's centre). The dashboard sends limits and scale on every connect and never sends `width_offset_mm`, which is a robot calibration. Boot defaults are the values shown above.
-- `run` only controls the buffer and the `space` label. Auditing runs whether or not a run is active.
-- While `measuring` is true, `drive` is ignored and the motors stay stopped (about 1.5 s).
-- `drive` with no ESP32 connected replies `{"ok":false,"err":"esp32 not connected"}`.
+- **Teleop watchdog.** In teleop, if no `drive` arrives for 500 ms, Scout stops. The watchdog lives on the ESP32 (section 9), so a Pi crash also stops the motors. The dashboard resends the current `drive` every 100 ms while a key or the joystick is held, and sends `stop` on release.
+- `drive` sets mode to `teleop`, which cancels `wall_follow`. This is how a human takes over mid-run.
+- `config` is partial: only the keys present change. `robot_width_mm` is a robot calibration; the dashboard sends limits but never sends `robot_width_mm`. Boot defaults are the values shown above.
+- `run` only controls the buffer, the map and the `space` label. Mapping and auditing run whether or not a run is active.
+- While `measuring` is true, `drive` is ignored and the motors stay stopped (up to about 3 s while the camera classifies).
+- `drive` with no ESP32 connected replies `{"ok":false,"err":"esp32 not connected"}`. `mode wall_follow` with no lidar replies `{"ok":false,"err":"lidar not connected"}`.
 
-## 5. WebSocket frames (Scout to dashboard, JSON text, one object per frame)
+## 6. WebSocket frames (Scout to dashboard, JSON text, one object per frame)
 
 `telem`, 10 Hz:
 
 ```json
-{"type":"telem","t":5123456,"mode":"teleop","measuring":false,"imu":true,"lidar":true,
- "pitch_deg":1.2,"roll_deg":0.3,"yaw_deg":87.5,
- "sweep":[{"a":-90,"mm":178},{"a":-45,"mm":655},{"a":0,"mm":1830},{"a":45,"mm":702},{"a":90,"mm":181}],
- "width_mm":359,"bump":[0,0],"stuck":false,"v":0.4,"w":0.0}
+{"type":"telem","t":5123456,"mode":"wall_follow","measuring":false,"lidar":true,
+ "scan":[1830,1825,0,1811,"... 360 entries ..."],
+ "pose":true,"x_mm":1240,"y_mm":830,"heading_deg":-88.4,
+ "room":{"w_mm":4210,"l_mm":5090},
+ "gaps":[{"a0":15.0,"mm0":3083,"a1":18.0,"mm1":4696,"width_mm":1625,"span_deg":3.0,"mid_deg":16.5,"evidence":"see_through"}],
+ "clearance_mm":742,"bump":[0,0],"stuck":false,"v":0.4,"w":0.0}
 ```
 
-- `imu` and `lidar` say whether those readings are live. When `imu` is false, `pitch_deg`, `roll_deg`, `yaw_deg` are `0` and must be shown as missing, not as level. When `lidar` is false, `sweep` is `[]` and `width_mm` is `0`.
-- `sweep` carries the latest reading for each angle Scout measures. From the lidar: the five angles `-90, -45, 0, 45, 90`, each the second-smallest return within ±5° of that bearing (robust to one stray sample), `0` when there is no return. Angles may be any subset of the five; consumers draw what they get.
-- `width_mm` = right (`-90`) + left (`90`) + `width_offset_mm`, or `0` when either side is `0` or over 2000 mm.
-- `bump` and `stuck` are always `[0,0]` and `false` in v1. The keys stay so a later version can fill them without a protocol change.
-
-`scan`, 2 Hz, only while the lidar is connected (added in v1.2):
-
-```json
-{"type":"scan","t":5123456,"hz":9.6,"mode":"express",
- "pts":[[-90.0,178],[-89.7,0],[-89.4,802]],
- "gaps":[{"a0":-31.2,"mm0":844,"a1":-12.5,"mm1":829,"width_mm":812,"span_deg":18.7,"evidence":"see_through"}]}
-```
-
-- One whole rotation, for drawing. `telem.sweep` stays the five audited angles and is unchanged; nothing in the audit reads `scan`.
-- `pts` is `[angle_deg, mm]` pairs in Scout's own convention (section 2: 0 ahead, negative right), angle to one decimal, ordered by angle. `mm` is `0` for no return, and those entries are kept: where the lidar saw nothing is information, not the absence of it.
-- `hz` is the measured rotation rate and `mode` is `express` or `standard`, so a viewer can say how dense the data is.
-- `gaps` are openings found between wall points, `a0` to `a1` counter-clockwise. `mm0` and `mm1` are the two edge ranges and `width_mm` the straight-line distance between them. The edges are carried here so a consumer never has to search `pts` for them.
-- Only gaps between 150 mm and 3000 mm wide are reported. Below that is sensor noise, above it is open space rather than an opening. The lower bound is under the 1:4 course's 190 mm gate on purpose.
-- `evidence` is how well supported the gap is, and a consumer must not present an `unverified` gap as a measured opening:
+- `lidar` says whether the scan is live. When it is `false`, `scan` is `[]`, `pose` is `false` and `clearance_mm` is `0`.
+- `scan` is exactly **360 integers** or empty. Index `i` is the range in millimetres at bearing `i` degrees counter-clockwise from straight ahead, so index `90` is left, `180` is behind, `270` is the right side (bearing -90). `0` means no return at that bearing. Each bin holds the second-smallest return within that degree, so one stray sample cannot fake an obstacle.
+- `gaps` are the openings found in this scan, `[]` without a lidar. `a0`/`mm0` and `a1`/`mm1` are the two edges counter-clockwise, `width_mm` the straight-line distance between them, `mid_deg` the bearing of the middle. **`evidence` says how far the gap can be trusted**, and a consumer must never present anything but `see_through` as a measured opening:
 
   | `evidence` | Meaning |
   | --- | --- |
-  | `see_through` | Something was seen through the gap, farther than both edges. It is really open. |
-  | `step` | The two edges are neighbouring samples. A range step, such as the corner of an object. |
-  | `unverified` | The arc between the edges is nothing but no-returns. An opening and a surface that does not reflect look identical in one rotation, so this is a candidate, not a measurement. |
+  | `see_through` | Something was seen past it, farther than both edges. It is really open. |
+  | `step` | The two edges are neighbouring samples: a range step, such as the corner of an object. |
+  | `unverified` | The arc between the edges is nothing but no-returns. An opening and a surface that does not reflect are indistinguishable in one rotation, so this is a candidate, not a measurement. |
 
-- At 2 Hz and about 420 points a rotation this is roughly 10 kB/s. A consumer that only drives and audits can ignore `scan` entirely.
-- Width events never come from `scan`. They come from `telem.width_mm`, which is built from two real returns and is `0` when either side is missing, so an arc of no-returns can never become a measured width.
+- `pose` false means the room frame is not locked; `x_mm`, `y_mm`, `heading_deg` are `0` and must be shown as missing, not as the origin. `room` is `null` until the rectangle is fitted.
+- `clearance_mm` is the width of the opening Scout is passing through right now, measured straight across its path, `0` when there is nothing to report. It is a live readout, not a verdict; verdicts come as `width_pass` / `width_fail` events. It is `0` in an open room (two walls four metres apart are not a gap anyone must fit through) and `0` while the way ahead is blocked (a gap Scout cannot drive towards is not a passage, and without that rule every corner of every room reads as a narrow doorway).
+- `bump` and `stuck` are always `[0,0]` and `false` in v2. The keys stay so a later version can fill them without a protocol change.
+
+`map`, 1 Hz while mapping, and once on connect:
+
+```json
+{"type":"map","t":5123456,"cell_mm":50,"w":96,"h":112,
+ "origin":[0,0],"cells":"000011112222...","pose":true}
+```
+
+- An occupancy grid of the room, in the room frame. `w` columns by `h` rows, row-major, row 0 at `y_mm` 0.
+- `cells` is a string of exactly `w * h` characters, one per cell: `0` unknown, `1` free, `2` occupied. A string, not an array, because it is a tenth the size and still readable in `curl`.
+- `origin` is the room-frame position in millimetres of the centre of cell `(0,0)`.
+- `cell_mm` is the cell edge length. 50 mm in v2.
+- Consumers redraw on every `map` frame and keep the last one when the link drops.
 
 `event`, when it happens:
 
 ```json
-{"type":"event","t":5130000,"seq":12,"kind":"slope_fail","value":7.1,"unit":"deg","limit":4.76,"scale":1.0,"space":"Table course"}
-{"type":"event","t":5141000,"seq":13,"kind":"width_fail","value":190,"unit":"mm","limit":215,"scale":0.25,"space":"Table course"}
-{"type":"event","t":5150000,"seq":14,"kind":"mark","label":"heavy door","space":"Table course"}
-{"type":"event","t":5160000,"seq":15,"kind":"run_stop","space":"Table course"}
+{"type":"event","t":5130000,"seq":12,"kind":"obstacle","label":"chair","confidence":0.71,"photo":"a1b2c3","x_mm":1980,"y_mm":640,"space":"E5 room 2024"}
+{"type":"event","t":5141000,"seq":13,"kind":"ramp","label":"ramp","confidence":0.83,"photo":"d4e5f6","x_mm":3110,"y_mm":210,"space":"E5 room 2024"}
+{"type":"event","t":5152000,"seq":14,"kind":"width_fail","value":780,"unit":"mm","limit":860,"between":"wall-obstacle","x_mm":2040,"y_mm":900,"space":"E5 room 2024"}
+{"type":"event","t":5160000,"seq":15,"kind":"run_stop","space":"E5 room 2024"}
 ```
 
 | `kind` | Extra fields | Meaning |
 | --- | --- | --- |
-| `slope_pass`, `slope_fail` | `value`, `unit:"deg"`, `limit`, `scale:1.0` | One per ramp, after a stop-and-measure. |
-| `width_pass`, `width_fail` | `value`, `unit:"mm"`, `limit`, `scale` | One per pinch point. `value` is the minimum width seen. |
-| `mark` | `label` | Human-triggered. |
+| `obstacle` | `label`, `confidence`, `photo`, `x_mm`, `y_mm` | One per obstacle, the first time it is confirmed and named. |
+| `ramp` | same as `obstacle` | The camera's top label was a ramp. Labelled only; Scout never judges a ramp. |
+| `width_pass`, `width_fail` | `value`, `unit:"mm"`, `limit`, `between`, and `x_mm`, `y_mm` when placed | One per pinch point. `value` is the narrowest gap seen. |
+| `mark` | `label`, `x_mm`, `y_mm` | Human-triggered, at Scout's current pose. |
 | `run_start`, `run_stop` | none | |
-| `tilt_cutoff` | `value`, `unit:"deg"` | Motors cut because pitch went over 20 degrees or roll over 15. |
-| `bump`, `stuck` | reserved | Not emitted in v1. |
+| `bump`, `stuck` | reserved | Not emitted in v2. |
 
 - `seq` counts up by one per event since the service started. It never repeats within a run.
 - `space` is the current run's name, or `""` when no run is active.
-- On every pass or fail event Scout also lights the LED (red for fail, green for pass) and beeps (fail: two low beeps, pass: one high chirp) through the ESP32.
+- `between` is `"wall-wall"`, `"wall-obstacle"`, or `"unknown"` when Scout had no pose and so could not tell what made the gap. A width is a real measurement whether or not Scout knows where it is standing, so the verdict is still reported -- it simply arrives without `x_mm` and `y_mm` and cannot be pinned on the map.
+- `confidence` is the classifier's score, 0..1. `label` is `"unknown"` and `confidence` is `0` when there is no camera or the score is below the floor in `config`.
+- `photo` is an id; the still is at `GET /photo/<id>`. It is `""` when no image was kept.
+- Events carrying a position are only emitted while `pose` is true.
+- On every `width_pass` or `width_fail` Scout lights the LED (red for fail, green for pass) and beeps (fail: two low beeps, pass: one high chirp) through the ESP32. `obstacle` and `ramp` are silent — they are observations, not verdicts.
 
-### Observable audit behaviour (what the dashboard can rely on)
+### Observable behaviour (what the dashboard can rely on)
 
-1. **Slope.** When the absolute pitch stays above 2 degrees for 500 ms, Scout stops, waits 400 ms, averages pitch for 1 s, and emits exactly one `slope_pass` or `slope_fail`. `measuring` is `true` and `v` is `0` throughout. It re-arms only after pitch has been under 1 degree for 1 s, so one ramp gives one event.
-2. **Width.** A pinch opens when either source sees something narrower than 1.4 times the effective limit: `width_mm`, which is the corridor at Scout's own position, or a `see_through` gap in the scan that is ahead of Scout and close to it. The pinch closes as soon as neither source sees anything narrow, or 8 s after it opened, and Scout emits exactly one `width_pass` or `width_fail` carrying the minimum width either source saw. One doorway gives one event whether Scout drove through it or only looked at it. A gap counts only when its `evidence` is `see_through`; `unverified` gaps never reach the audit, and neither do `step` gaps.
-3. Events fire in every mode, run or no run. Slope needs the IMU; width needs the lidar. A missing device silently disables its own audit and nothing else.
+1. **Obstacles.** A cluster of returns that is not part of the fitted room rectangle, at least 80 mm across and stable for 1 s, is an obstacle. Scout emits exactly one `obstacle` or `ramp` per obstacle per run, when it first stops in front of it. Re-seeing the same obstacle later emits nothing.
+2. **Naming.** Before emitting, Scout stops, holds still, captures one still and classifies it. `measuring` is `true` and `v` is `0` throughout, up to about 3 s. With no camera it emits the event immediately with `label:"unknown"`.
+3. **Width.** Scout measures every gap it can see between two returns that bound a passable opening — wall to wall, or wall to obstacle. When a gap narrower than 1.4 times the limit enters the path, a pinch opens; when it widens again, or after 3 s, the pinch closes and Scout emits exactly one `width_pass` or `width_fail` carrying the narrowest gap seen.
+5. **Wall following.** In `wall_follow` Scout drives forward at `cruise`, holds `wall_target_mm` from the wall on its right, turns to follow corners, and reverses out of dead ends. It stops when it has closed a loop of the room. It never needs to know where it is to do this; `pose` only decides whether findings get placed on the map.
+6. Events fire in every mode, run or no run. Everything except `mark` needs the lidar. A missing device silently disables its own feature and nothing else.
 
-## 6. Run log (NDJSON)
+## 7. Run log (NDJSON)
 
 One JSON object per line. Line 1 is the header. Every other line is a frame exactly as it went over `/ws`.
 
 ```
-{"type":"run","space":"Table course","fw":"pi 0.1.0 / esp32 0.1.0","started_t":5000000,"config":{"slope_limit_deg":4.76,"width_limit_mm":860,"scale":0.25,"width_offset_mm":0}}
+{"type":"run","space":"E5 room 2024","fw":"pi 0.2.0 / esp32 0.2.0","started_t":5000000,"config":{"width_limit_mm":860,"robot_width_mm":260,"wall_target_mm":300,"cruise":0.4}}
 {"type":"telem", ...}
+{"type":"map", ...}
 {"type":"event", ...}
 ```
 
-- `GET /runs/latest` returns the current buffer: every event, plus telemetry decimated to 2 Hz. The buffer holds at least 5 minutes. Events are never dropped; old telemetry is dropped first.
-- The dashboard records everything it receives on `/ws`, at full rate, into the same format, and can save it as a file.
+- `GET /runs/latest` returns the current buffer: every event, telemetry decimated to 2 Hz, and **only the most recent `map` frame**, written in place. The buffer holds at least 5 minutes. Events are never dropped; old telemetry is dropped first.
+- A replay that contains no `map` frame shows an empty map. The dashboard's recorder keeps one map frame per 10 s so a recorded run replays with the map filling in.
+- The dashboard records everything it receives on `/ws` into the same format and can save it as a file.
 - `tools/fake-scout` serves any such file as if it were live. The dashboard's replay mode plays any such file with no server. Both time frames by `t` deltas.
 
-## 7. Dashboard data files (in `data/`)
+## 8. Dashboard data files (in `data/`)
 
-Not on the wire, but a contract between whoever edits the files and the dashboard. Every value here is a real, full-scale building measurement. Table course numbers never go in these files.
+Not on the wire, but a contract between whoever edits the files and the dashboard.
 
 `data/rules.json`:
 
 ```json
 {
-  "table_scale": 0.25,
   "rules": [
-    {"id":"ramp_slope","kind":"slope","limit":4.76,"unit":"deg","cmp":"max",
-     "text":"Ramps on an accessible route may be no steeper than 1 in 12 (4.76 degrees).",
-     "source":"Ontario Building Code 3.8.3.4.(1)(b)",
-     "fix":"Rebuild the ramp at 1 in 12 or shallower, or add a lift."},
     {"id":"door_clear_width","kind":"width","limit":860,"unit":"mm","cmp":"min",
      "text":"Doorways on an accessible route need at least 860 mm of clear opening. The same number applies to aisles.",
      "source":"Ontario Building Code 3.8.3.3",
      "fix":"Widen the opening, rehang the door, or move the obstruction."}
-  ]
+  ],
+  "labels": ["ramp","door","chair","table","box","bin","cable","wall","unknown"]
 }
 ```
 
-`kind` maps event kinds to rules: `slope_*` to `ramp_slope`, `width_*` to `door_clear_width`. `cmp:"max"` means the value must be at most the limit, `"min"` means at least.
+- `kind` maps event kinds to rules: `width_*` to `door_clear_width`. `cmp:"min"` means the value must be at least the limit.
+- `labels` is the closed set the classifier scores against, most specific first. Editing this file changes what the camera can say; no code change.
+- There is no slope rule. Scout cannot measure slope, so it never judges a ramp.
 
-`data/spaces.json`:
+`data/spaces.json` is gone. In v1 it held hand-measured building checkpoints for a viewer that no longer exists; Scout now produces its own map and its own findings at run time, and a saved run (section 7) is the record of a space. Nothing reads a spaces file.
 
-```json
-{
-  "spaces": [
-    {
-      "id": "corridor-a",
-      "name": "Corridor A, 2nd floor",
-      "model": "models/corridor-a.glb",
-      "checkpoints": [
-        {"id":"c1","rule":"door_clear_width","value":780,"unit":"mm","source":"tape","note":"Door to the washroom","position":[1.2,0.0,-3.4]},
-        {"id":"c2","rule":"ramp_slope","value":3.1,"unit":"deg","source":"level","note":"Entrance ramp"},
-        {"id":"c3","rule":null,"source":"mark","note":"Heavy door, no automatic opener","position":[0.4,0.0,-1.0]}
-      ]
-    }
-  ]
-}
-```
-
-- `model` is optional (a space measured by hand has none). The path is relative to `data/`.
-- `position` is optional. A checkpoint with a position is drawn as a pin on the model: red fail, green pass, amber for `rule: null` (a note).
-- `source` is one of `scout`, `tape`, `level`, `mark`. Pass or fail is computed by the dashboard from `rules.json` and never stored.
-- The summary banner counts spaces, checkpoints, and checkpoints that fail.
-
-Models: GLB (glTF 2.0), metres, Y up, true scale as Scaniverse exports them. Pin positions are metres in the model's own frame. Keep each file under 30 MB (`npx @gltf-transform/cli optimize in.glb out.glb --texture-size 2048`, once, by hand).
-
-## 8. Pi to ESP32 serial contract
+## 9. Pi to ESP32 serial contract
 
 USB serial, 115200 baud, 8N1, one message per line (`\n`). The Pi finds the port by probing every USB serial device for the ESP32's JSON lines, never by `/dev/ttyUSB0`.
 
@@ -219,60 +215,40 @@ Pi to ESP32, plain text:
 ```
 D <v> <w>        drive. v, w in -1..1, w positive = left. No D for 500 ms: motors stop (the watchdog).
 S                stop now, no ramp-down. Also clears the watchdog.
-Z                zero: store the current pitch and roll as level and reset yaw. Robot still.
 B [p]            beep. p 0 (default) one high chirp for pass, p 1 two low beeps for fail.
 L <red> <green>  LEDs, 0 or 1 each.
-T                self-test: each motor forward and back, chirp, both LEDs. Blocks about 3 s.
+T                self-test: each side forward and back, chirp, both LEDs. Blocks about 3 s.
 ```
 
 ESP32 to Pi, JSON lines:
 
 ```
-{"hello":"scout-esp32","fw":"0.1.0"}                                                    once at boot
-{"t":5123456,"pitch":1.2,"roll":0.3,"yaw":87.5,"v":0.40,"w":0.00,"imu":true}           10 Hz
-{"zeroed":true}     {"err":"unknown cmd X"}                                             replies
+{"hello":"scout-esp32","fw":"0.2.0"}                     once at boot
+{"t":5123456,"v":0.40,"w":0.00}                          10 Hz
+{"err":"unknown cmd X"}                                  replies
 ```
 
 - `t` is the ESP32's `millis()`. The Pi ignores it for timing and uses its own clock.
-- `imu` is false when the MPU6050 does not answer on I2C. The Pi passes it through as `imu` in telemetry.
-- `pitch`, `roll`, `yaw` follow section 2. Sign flips for mounting live in `firmware/src/config.h`, not on the Pi.
-- Opening the port resets the ESP32 (DTR). It reboots in about a second, prints `hello`, calibrates the gyro for 2 s (robot still), and streams. The Pi tolerates the bootloader's non-JSON lines.
+- The four motors are ganged as two sides: the left pair on one driver channel, the right pair on the other.
+- Opening the port resets the ESP32 (DTR). It reboots in about a second, prints `hello`, and streams. The Pi tolerates the bootloader's non-JSON lines.
 
 ## Changelog
 
-v1.3, 2026-09-19: gaps can open a width pinch. Additive, `proto` stays 1. **Needs the same sign-off.**
+v2, 2026-09-19: no IMU. The lidar maps, the camera names, Scout roams on its own.
 
-- Section 5, observable audit behaviour 2: the width pinch now takes a second input, a `see_through` gap from the scan that is ahead of Scout and close to it. Frames, kinds and fields are unchanged; only when an event fires can differ.
-- One doorway still gives exactly one event. The two sources feed one pinch and the event carries the minimum either saw, so a doorway Scout drives through is still measured by `width_mm` as before. Seeing a gate ahead and then driving through it is one continuous pinch, not two.
-- The pinch's hard cap goes from 3 s to 8 s, because an approach plus the drive through is longer than 3 s. It still closes the instant neither source sees anything narrow, so verdict timing at the gate is unchanged.
-- `unverified` gaps never reach the audit, by construction. An arc of no-returns cannot become an event, only a candidate drawn in the view.
-- Thresholds live in `pi/scout/audit.py`: a gap counts when its middle bearing is within 60 degrees of straight ahead and both edges are within 2500 mm.
+- **The IMU is gone.** `pitch_deg`, `roll_deg`, `yaw_deg` and the `imu` flag are removed from `telem`; `slope_pass`, `slope_fail` and `tilt_cutoff` are removed from events; the `zero` command and the `Z` serial line are removed; the slope rule is removed from `rules.json`. Nothing on Scout measures slope.
+- **Ramps are labelled, not judged.** A `ramp` event says where a ramp is and how confident the camera was. It carries no angle and no pass/fail, because Scout cannot measure one. Clearance width is the only building-code judgement left.
+- **The camera joins the protocol.** `devices.camera`, `label`, `confidence` and `photo` on obstacle events, `GET /photo/<id>`, and the `labels` list in `rules.json`.
+- **`sweep` becomes `scan`**: the full 360-entry ring instead of five angles, so gap finding sees wall-to-obstacle pinches and not just the two sides. v1.2's separate 2 Hz `scan` frame is folded into `telem` -- one representation of a rotation on the wire, not two -- and its `gaps` with their `evidence` come with it, unchanged in shape.
+- **Position and mapping added**: the room frame (section 4), `pose` / `x_mm` / `y_mm` / `heading_deg` / `room` in `telem`, the `map` frame, `GET /map`, `{"cmd":"map","action":"clear"}`, and positions on events.
+- **`wall_follow` mode added**, with `wall_target_mm` and `cruise` in `config`. `roam` returns as a `GET /cmd` shortcut.
+- **Table mode removed**: `scale`, `width_offset_mm` and `slope_limit_deg` are gone from `config`, and `table_scale` from `rules.json`. Scout now works at full scale in a real room, so there is no scaled number to label. `robot_width_mm` added.
+- `width_*` events gain `between`, `x_mm`, `y_mm`. `heap` removed from `/status`.
+- `proto` is now `2`. A v1 consumer and a v2 Scout will not interoperate; check `proto` and say so.
 
-v1.2, 2026-09-19: the `scan` frame. Additive, `proto` stays 1. **Needs sign-off from all three code owners before it is final.**
+v1.1, 2026-09-19: the Pi becomes the brain. Additive, `proto` stayed 1.
 
-- `scan` added to section 5: one full rotation plus detected gaps, at 2 Hz, for the dashboard's lidar view. Nothing else reads it and the audit is untouched.
-- Gaps carry `evidence`, because a lidar cannot tell an opening from a non-reflective surface in a single rotation. `unverified` gaps must never be shown as measurements.
-- No change to `telem`, `event`, commands, `/status` or the serial contract.
+- Scout's network endpoint became the Pi at `scout.local:8080`. The ESP32 lost wifi, HTTP and its WebSocket.
+- The Pi to ESP32 serial contract was added; `devices` was added to `/status`; `sweep` came from the RPLIDAR A1 instead of a sonar turret.
 
-v1.1, 2026-09-19: the Pi becomes the brain. Additive, `proto` stays 1.
-
-- Scout's network endpoint is the Pi at `scout.local:8080`. The ESP32 no longer has wifi, HTTP or a WebSocket.
-- Section 8 added: the Pi to ESP32 serial contract.
-- `devices` added to `/status`; `imu` and `lidar` added to `telem`; `fw` now names both halves.
-- `sweep` comes from the RPLIDAR A1: all five angles, second-smallest return within ±5°. The sonar turret and servo are gone.
-- `width_offset_mm` default is `0` (lidar at the body centre).
-- `drive` with no ESP32 returns an error.
-- LED and beep on pass/fail events made explicit.
-- Fallback access point moved to LATER.
-
-v1, 2026-09-19, relative to section 4 of the original master spec:
-
-- Hub removed. Section 4.6 (Hub API) is gone; the dashboard speaks this protocol directly. The `link` and `verdict` frames are gone (the dashboard keeps its own link state and speaks verdicts itself).
-- Commands are also accepted as text frames on `/ws`. `drive` implies teleop.
-- `sweep` may carry a subset of the five angles.
-- `scale` added to measurement events, and `config` to the run header, so replay files are self-describing.
-- `measuring` and `config` added to `/status`.
-- `turn` command and the `roam` shortcut removed (no wall-follow in v1). `config` keys `wall_target_mm`, `cruise`, `stop_at_wall` removed.
-- `seq` counts since boot rather than per run.
-- `GET /` (phone remote page) deferred.
-- Data file formats (`rules.json`, `spaces.json`) added as section 7.
+v1, 2026-09-19: Hub removed, the dashboard speaks to Scout directly, commands accepted as `/ws` text frames, data file formats added.

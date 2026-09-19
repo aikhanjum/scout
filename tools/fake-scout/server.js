@@ -14,7 +14,7 @@ const log = (...a) => console.log(new Date().toISOString().slice(11, 23), ...a);
 
 const lines = fs.readFileSync(file, 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l));
 const header = lines.find((l) => l.type === 'run') ?? {};
-const frames = lines.filter((l) => l.type === 'telem' || l.type === 'event');
+const frames = lines.filter((l) => l.type === 'telem' || l.type === 'event' || l.type === 'scan');
 if (!frames.length) throw new Error(`no frames in ${file}`);
 
 // --- state the real firmware keeps ---

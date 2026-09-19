@@ -1,8 +1,8 @@
-// Scout ESP32 bridge. Speaks docs/PROTOCOL.md section 8 over USB serial at 115200.
-// In:  D v w | S | Z | B [p] | L r g | T        Out: JSON lines, telemetry at 10 Hz.
-// Owns the motors, the IMU filter and the 500 ms watchdog. Nothing else. No wifi.
+// Scout ESP32 bridge. Speaks docs/PROTOCOL.md section 9 over USB serial at 115200.
+// In:  D v w | S | B [p] | L r g | T           Out: JSON lines, echo at 10 Hz.
+// Owns the motors and the 500 ms watchdog, and nothing else. No wifi, no IMU: Scout senses with
+// the lidar and the camera on the Pi. The four motors are ganged as two sides.
 #include <Arduino.h>
-#include <Wire.h>
 #include "config.h"
 
 // ---------------------------------------------------------------- motors
@@ -43,57 +43,6 @@ static void driveTick() {  // every 20 ms: slew toward the targets
   motorWrite(CH_B, PIN_BIN1, PIN_BIN2, curR);
 }
 
-// ---------------------------------------------------------------- IMU (MPU6050, raw registers)
-static const uint8_t MPU = 0x68;
-static bool imuOk = false;
-static float pitch = 0, roll = 0, yaw = 0;      // filtered, before zero and sign
-static float pitchZero = 0, rollZero = 0;
-static float gxBias = 0, gyBias = 0, gzBias = 0;
-static int calSamples = 0;
-static float calGx = 0, calGy = 0, calGz = 0;
-
-static bool mpuRead(float& ax, float& ay, float& az, float& gx, float& gy, float& gz) {
-  Wire.beginTransmission(MPU);
-  Wire.write(0x3B);
-  if (Wire.endTransmission(false) != 0) return false;
-  if (Wire.requestFrom((int)MPU, 14) != 14) return false;
-  int16_t r[7];
-  for (int i = 0; i < 7; i++) r[i] = (int16_t)((Wire.read() << 8) | Wire.read());
-  ax = r[0] / 16384.0f; ay = r[1] / 16384.0f; az = r[2] / 16384.0f;  // g, at +-2 g
-  gx = r[4] / 131.0f;   gy = r[5] / 131.0f;   gz = r[6] / 131.0f;    // deg/s, at +-250 deg/s
-  return true;
-}
-
-static void imuInit() {
-  Wire.begin(PIN_SDA, PIN_SCL);
-  Wire.setClock(400000);
-  Wire.beginTransmission(MPU);
-  Wire.write(0x6B); Wire.write(0);  // PWR_MGMT_1: wake up, internal clock
-  imuOk = (Wire.endTransmission() == 0);
-}
-
-// Axes: X forward, Y left, Z up. Nose up -> ax positive. Right side down -> ay positive.
-// Gyro: nose up is -gy, right side down is +gx, turning left is +gz.
-static void imuTick(float dt) {
-  float ax, ay, az, gx, gy, gz;
-  if (!mpuRead(ax, ay, az, gx, gy, gz)) { imuOk = false; return; }
-  imuOk = true;
-  if (calSamples < GYRO_CAL_SAMPLES) {  // gyro bias: average the first 2 s, robot still
-    calGx += gx; calGy += gy; calGz += gz;
-    if (++calSamples == GYRO_CAL_SAMPLES) { gxBias = calGx / calSamples; gyBias = calGy / calSamples; gzBias = calGz / calSamples; }
-  }
-  float accPitch = atan2f(ax, sqrtf(ay * ay + az * az)) * RAD_TO_DEG;
-  float accRoll  = atan2f(ay, sqrtf(ax * ax + az * az)) * RAD_TO_DEG;
-  if (calSamples < GYRO_CAL_SAMPLES) { pitch = accPitch; roll = accRoll; return; }  // accel only until the bias is known
-  pitch = 0.98f * (pitch + (-(gy - gyBias)) * dt) + 0.02f * accPitch;
-  roll  = 0.98f * (roll  + ( (gx - gxBias)) * dt) + 0.02f * accRoll;
-  yaw  += (gz - gzBias) * dt;
-}
-
-static float outPitch() { return PITCH_SIGN * (pitch - pitchZero); }
-static float outRoll()  { return ROLL_SIGN  * (roll  - rollZero); }
-static float outYaw()   { return YAW_SIGN   * yaw; }
-
 // ---------------------------------------------------------------- buzzer and LEDs (non-blocking patterns)
 // pattern 0: one high chirp (pass). pattern 1: two low beeps (fail).
 static uint32_t beepUntil = 0, beepGapUntil = 0;
@@ -122,7 +71,7 @@ static void selfTest() {  // T: blocks about 3 s, for the hardware bring-up
   motorWrite(CH_B, PIN_BIN1, PIN_BIN2, 0.5f);  delay(400); motorWrite(CH_B, PIN_BIN1, PIN_BIN2, -0.5f); delay(400); motorWrite(CH_B, PIN_BIN1, PIN_BIN2, 0);
   ledcWriteTone(CH_BUZZ, 2000); delay(150); ledcWriteTone(CH_BUZZ, 0);
   digitalWrite(PIN_LED_RED, LOW); digitalWrite(PIN_LED_GREEN, LOW);
-  Serial.printf("{\"test\":\"done\",\"imu\":%s}\n", imuOk ? "true" : "false");
+  Serial.println("{\"test\":\"done\"}");
 }
 
 static void handleLine(char* line) {
@@ -130,7 +79,6 @@ static void handleLine(char* line) {
   switch (line[0]) {
     case 'D': if (sscanf(line + 1, "%f %f", &v, &w) == 2) driveSet(v, w); else Serial.println("{\"err\":\"D needs v w\"}"); break;
     case 'S': driveStop(); break;
-    case 'Z': pitchZero = pitch; rollZero = roll; yaw = 0; Serial.println("{\"zeroed\":true}"); break;
     case 'B': beep(sscanf(line + 1, "%d", &a) == 1 ? a : 0); break;
     case 'L': if (sscanf(line + 1, "%d %d", &a, &b) == 2) { digitalWrite(PIN_LED_RED, a ? HIGH : LOW); digitalWrite(PIN_LED_GREEN, b ? HIGH : LOW); } break;
     case 'T': selfTest(); break;
@@ -158,21 +106,18 @@ void setup() {
   ledcSetup(CH_B, 20000, 8); ledcAttachPin(PIN_PWMB, CH_B);
   ledcSetup(CH_BUZZ, 2000, 8); ledcAttachPin(PIN_BUZZER, CH_BUZZ);
   driveStop();
-  imuInit();
-  Serial.printf("{\"hello\":\"scout-esp32\",\"fw\":\"%s\",\"imu\":%s}\n", FW_VERSION, imuOk ? "true" : "false");
+  Serial.printf("{\"hello\":\"scout-esp32\",\"fw\":\"%s\"}\n", FW_VERSION);
 }
 
 void loop() {
-  static uint32_t lastImu = 0, lastDrive = 0, lastTelem = 0;
+  static uint32_t lastDrive = 0, lastTelem = 0;
   uint32_t now = millis();
   readSerial();
-  if (now - lastImu >= 10)  { imuTick((now - lastImu) / 1000.0f); lastImu = now; }
   if (now - lastDrive >= 20) { driveTick(); lastDrive = now; }
   if (driving && now - lastDriveCmd > WATCHDOG_MS) driveStop();
   beepTick(now);
   if (now - lastTelem >= TELEM_MS) {
     lastTelem = now;
-    Serial.printf("{\"t\":%lu,\"pitch\":%.2f,\"roll\":%.2f,\"yaw\":%.1f,\"v\":%.2f,\"w\":%.2f,\"imu\":%s}\n",
-                  (unsigned long)now, outPitch(), outRoll(), outYaw(), cmdV, cmdW, imuOk ? "true" : "false");
+    Serial.printf("{\"t\":%lu,\"v\":%.2f,\"w\":%.2f}\n", (unsigned long)now, cmdV, cmdW);
   }
 }

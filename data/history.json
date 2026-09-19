@@ -1,0 +1,20 @@
+{
+ "generated_at": "2026-09-19T20:02:40Z",
+ "bucket": "15 minute",
+ "includes_simulated": true,
+ "spaces": [
+  {
+   "space": "E5 room 2024",
+   "buckets": [
+    {
+     "start": "2026-09-19T12:00:00Z",
+     "runs": 1,
+     "frames": 660,
+     "min_clearance_mm": 502,
+     "fails": 1,
+     "empty_share": 0.0
+    }
+   ]
+  }
+ ]
+}

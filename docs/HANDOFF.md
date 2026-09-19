@@ -1,26 +1,24 @@
-# Handoff, 2026-09-19 07:15 EDT
+# Handoff, 2026-09-19 14:40 EDT
 
-Submission is **Sunday 2026-09-20 08:00 EDT** — roughly **25 hours** from this timestamp.
+Submission is **Sunday 2026-09-20 08:00 EDT** — roughly **17 hours** from this timestamp.
 
-Two audiences. **Sections 1–3 are for a teammate** who has been heads-down on something else and needs to know what Scout is now and where it stands. **Sections 4 onward are the working detail** for whoever picks up the code next.
+Two audiences. **Sections 1–3 are for a teammate** who has been heads-down on something else and needs to know what Scout is and where it stands. **Sections 4 onward are the working detail** for whoever picks up the code next.
 
 `CLAUDE.md` has the rules, `docs/PROTOCOL.md` is the contract, `RUNBOOK.md` is demo day.
 
 ---
 
-## 1. Read this first: Scout changed direction
+## 1. Read this first
 
-### The thing that forced it
+### There is no IMU, and there never will be
 
-**There is no IMU and there never will be.** Confirmed by the team this session.
-
-That is not a missing part, it is a change of what Scout can claim. A ramp meeting a horizontal lidar plane returns exactly what a wall returns — same points, same shape. Nothing on Scout can measure slope. So:
+Confirmed by the team. That is not a missing part, it is a change of what Scout can claim. A ramp meeting a horizontal lidar plane returns exactly what a wall returns — same points, same shape. Nothing on Scout measures slope. So:
 
 > **Ramps are labelled by the camera and never judged. Clearance width is the only building-code verdict Scout gives.**
 
-The old demo beat — *"Ramp too steep. 7.1 degrees. The limit is 4.8."* — **is gone and cannot come back.** If you are still building or pitching against slope, stop.
+The old demo beat — *"Ramp too steep. 7.1 degrees."* — **is gone and cannot come back.** If you are still building or pitching against slope, stop.
 
-### What Scout is now
+### What Scout is
 
 A Roomba that draws an accessibility map. It drives itself around a room, maps it in 2D, and marks what it finds.
 
@@ -28,7 +26,7 @@ A Roomba that draws an accessibility map. It drives itself around a room, maps i
 ESP32 (motors, watchdog)  <--USB-->  Pi 4 (lidar, camera, map, audit)  <--wifi-->  dashboard
 ```
 
-The division of labour is the whole design, and it is worth holding in your head:
+The division of labour is the whole design:
 
 | | Job | Produces |
 | --- | --- | --- |
@@ -39,16 +37,26 @@ The camera never measures anything and never decides a pass/fail. Its only job i
 
 ### How Scout gets a position without odometry or an IMU
 
-This is the part most likely to surprise you. Nothing on the robot knows how far it has driven. Position comes out of the lidar itself: **fit the rectangle of the room in every scan and read position and heading straight off it.** Nothing accumulates, so nothing drifts — but it fails outright in spaces that are not rectangular, and then `pose` goes false and the map stops growing until it recovers.
+Nothing on the robot knows how far it has driven. Position comes out of the lidar: **fit the rectangle of the room in every scan and read position and heading straight off it.** Nothing accumulates, so nothing drifts — but it fails outright in spaces that are not closed rectangles, and then `pose` goes false and the map stops growing until it recovers.
 
-**If you consume telemetry: honour `pose: false`.** When it is false, `x_mm`/`y_mm`/`heading_deg` are zero and mean nothing. A confidently wrong pose corrupts the map for the rest of the run.
+**If you consume telemetry: honour `pose: false`.** When false, `x_mm`/`y_mm`/`heading_deg` are zero and mean nothing.
 
-### The demo, now
+### ⚠️ The room is not scenery, it is the sensor
+
+This is the single most important operational fact in the project, and it is new since the last handoff. Because pose is read off the room's rectangle, **how you build the room decides whether Scout works at all.** Three rules, in the order they bite:
+
+1. **Oblong, not square.** One side at least 300 mm longer than the other. See §4 — in a square room a quarter turn is indistinguishable from no turn, and that is not fixable in software.
+2. **Closed corners.** No gaps. A gap lets the beam out and the fit is built from whatever it found in the space beyond.
+3. **Clear floor.** Feet, bags and standing people hide walls.
+
+`RUNBOOK.md` §0 is this list in demo-day form.
+
+### The demo
 
 1. Put Scout on the floor, press **ROAM**.
 2. It finds the walls and starts following the right-hand wall.
 3. The map draws itself on the big screen within a lap.
-4. It stops in front of an obstacle, photographs it, names it, drops a labelled marker, goes around.
+4. It stops at an obstacle, photographs it, names it, drops a labelled marker, goes around.
 5. It squeezes through a narrow gap and calls it: red light, two beeps, *"Too narrow between a wall and an obstacle. 51 centimetres. A wheelchair needs 86."*
 
 ---
@@ -57,129 +65,164 @@ This is the part most likely to surprise you. Nothing on the robot knows how far
 
 | | State |
 | --- | --- |
-| Protocol v2, Pi brain, firmware, dashboard, simulator | **Done and pushed.** 15 commits on `main`. |
+| Protocol v2, Pi brain, firmware, dashboard, simulator | **Done and pushed.** 33 commits on `main`. |
+| Pose / map / clearance / wall following | **Validated in simulation across 7 room shapes.** Never yet run in a real closed room. |
+| Lidar | **Works.** Adapter now obtained — **not yet tested with it.** |
 | Firmware build | **Compiles clean.** Never flashed to a board. |
-| Lidar | **Works.** Spins, reports, express mode. Unplugged at session end. |
-| Pose / map / clearance / wall following | **Validated only in simulation.** The one real-world test failed — see §4. |
 | Camera / CLIP labels | **Never executed.** No Pi, no camera, no model files. Degrades to `"unknown"`. |
 | Raspberry Pi | **Never used.** Not flashed, no hotspot, no systemd. |
 | Motor driver | **Does not exist.** Blocks driving only. |
 | 5 V rail | **Does not exist.** 18650s cannot feed a Pi 4. |
+| The demo room | **Not built yet.** Must be oblong and closed — see §4. |
 
-Numbers that are real, all from the simulated fixture: room size within 10 mm, position 4.5 mm median / 14 mm worst, heading within 0.2°, on 88% of scans; a 510 mm slot read as **504 mm**; 3 ms per scan.
+Numbers that are real, all from simulation: room size within 10 mm, position **2.0 mm median / 8.5 mm worst** across seven room shapes, heading within 0.5°, on 99–100% of scans; a 510 mm slot read as **504 mm**; 3 ms per scan.
 
-**The honest summary: the software is finished and the robot does not exist yet.** The single real-world contact with a lidar failed, and that is §4.
+**The honest summary: the software is finished and validated in simulation; the robot does not exist yet and the room has not been built.**
 
 ---
 
 ## 3. What this means for your workstream
 
-### If you wrote `gaps.py` / `LidarView.tsx` / the express-scan driver
-
-**Nobody has told you the IMU is gone and `main` is now protocol v2.** Sorry — that conversation is still owed, and this paragraph is the substitute.
+### If you wrote `gaps.py` / `LidarView.tsx` / the RPLIDAR driver
 
 **Your work survived intact.** Nothing was deleted:
 
-- `rplidar.py` — kept wholesale; v2's lidar thread runs on your driver unchanged, so mapping gets express scan for free.
+- `rplidar.py` — kept wholesale. You also corrected it to the A2M8 (commit `a00c743`); that rename is on `main`.
 - `gaps.py` — kept and wired in. It feeds both the lidar view *and* the width audit.
-- `LidarView.tsx` — kept, rebuilt to read `telem.scan` / `telem.gaps`, and sits under the map as a raw-data companion.
-- `check_audit.py` — **all 17 checks pass** against v2.
-- `RUNBOOK.md` — kept, with the slope narration corrected.
+- `LidarView.tsx` — kept, rebuilt to read `telem.scan` / `telem.gaps`.
+- `check_audit.py` — **all 17 checks pass.**
 
-**Your `evidence` model was better than what I first wrote and is now load-bearing.** A gap bounded by an arc of no-returns can never become a measurement, because a doorway and a non-reflective surface are identical in one rotation. I extended the same idea to the clearance measurement.
+**Your `evidence` model is load-bearing.** A gap bounded by an arc of no-returns can never become a measurement, because a doorway and a non-reflective surface are identical in one rotation. The same idea now guards the clearance measurement.
 
-**What did change:** protocol v1.2's separate 2 Hz `scan` frame is folded into `telem` as a fixed 360-int array, so a rotation has one representation on the wire rather than two. `proto` is now `2` — a v1 consumer and a v2 Scout will not interoperate.
+**What changed:** v1.2's separate 2 Hz `scan` frame is folded into `telem` as a fixed 360-int array. `proto` is now `2` — a v1 consumer and a v2 Scout will not interoperate.
 
 ### If you are on hardware
 
-Two things have been open all session and block the *driving* half of the demo:
+Two things block the *driving* half of the demo and have been open for two sessions:
 
 1. **A motor driver.** Four DAGU motors, nothing to drive them. The firmware expects a two-channel H-bridge, left pair on channel A, right pair on B.
-2. **5 V regulation.** 18650s are 7.4–8.4 V; a Pi 4 needs a real 5 V at 3 A. Target a 5 A buck — **not an LM2596**, whose "3 A" is a peak figure that sags into brownout territory.
+2. **5 V regulation.** 18650s are 7.4–8.4 V; a Pi 4 needs a real 5 V at 3 A. Target a 5 A buck — **not an LM2596**, whose "3 A" is a peak figure that sags into brownout.
 
-*Shortcut that removes item 2 entirely:* put the Pi and lidar on a **USB power bank** and give the 18650s to the motors alone.
+*Shortcut that removes item 2:* put the Pi and lidar on a **USB power bank**, give the 18650s to the motors alone.
 
-**Know this failure mode:** an undersized 5 V rail does not crash the Pi cleanly. It browns out the USB ports first, so the **lidar drops out at random and it reads as a software bug**. `vcgencmd get_throttled` → `0x0` healthy, bit 0 = under-voltage now, bit 16 = happened since boot. Check it before anyone blames code.
+**Know this failure mode:** an undersized 5 V rail does not crash the Pi cleanly. It browns out the USB ports first, so the **lidar drops at random and it reads as a software bug**. `vcgencmd get_throttled` → `0x0` healthy, bit 0 = under-voltage now, bit 16 = since boot. Check before blaming code.
 
-**Mounting matters more than it sounds:** the lidar must be level, at the top, with nothing of the robot above its beam plane. Anything poking up becomes a permanent wall in every scan and the room fit dies.
+**Mounting:** the lidar must be level, at the top, with nothing of the robot above its beam plane. Anything poking up becomes a permanent wall in every scan and the room fit dies.
+
+**Building the room is now a hardware task with a correctness requirement** — see §1 and §4. Oblong, closed, clear.
 
 ### If you are on the dashboard
 
-The slope gauge and the GLB/Scaniverse viewer are gone. The 2D map canvas is the screen now (plain canvas, no three.js). `LidarView` sits beneath it. Clearance shows `--` rather than a number when there is nothing to report — that is normal in open space and when a side is too blind to trust.
+The slope gauge and the GLB viewer are gone. The 2D map canvas is the screen (plain canvas, no three.js). `LidarView` sits beneath it. Clearance shows `--` rather than a number when there is nothing to report — normal in open space and when a side is too blind to trust.
 
 ### If you are on the pitch
 
-Say all of this out loud rather than letting a judge find it:
+Say these out loud rather than letting a judge find them:
 
 - Scout labels ramps and never judges them, because it cannot measure slope.
 - Widths are Scout's own lidar measurements — quote the error.
-- The replay is a **simulated room with scripted labels**, not a recording of the robot. `RUNBOOK.md` already says to state this.
-- Two rules out of many; a screening tool for a human inspector, not a legal inspection. Not yet tested with wheelchair users.
+- The replay is a **simulated room with scripted labels**, not a recording of the robot.
+- Two rules out of many; a screening tool for a human inspector, not a legal inspection. Not tested with wheelchair users.
 
 ---
 
-## 4. The live problem: Scout cannot localise in the arena we built
+## 4. Localisation: what the last session settled
 
-This is where the session stopped, and it is the critical path.
+The previous handoff left this as the open critical path. It is now resolved, and the resolution is **a decision about the room, not a change to the fitter.**
 
-### What happened
+### The table pen failed, and why
 
-The test arena is **four tables laid on their sides** forming a pen, inside an open lab. Not a room.
+The old arena was **four tables on their sides** in an open lab. `pose.py` fits the convex hull of a scan and takes its minimum-area rectangle. In the pen that produced a **12 480 × 7 539 mm** rectangle with **3% of returns on it** and never locked.
 
-`pi/scout/pose.py` on `main` fits the **convex hull** of a scan and takes its minimum-area rectangle. That works beautifully in a closed room and **fails completely in the pen**: the hull is defined by the most distant returns, and in an open arena those are beams escaping through the gaps between tables. On a real scan from inside the pen it produced a 12.5 × 7.5 m rectangle with **3%** of returns on it, and never produced a pose.
+Cause: the tables were originally set to a tight square, then **moved apart to enlarge the arena, which opened a diagonal slot at every corner.** 33% of bearings came back empty and **43% of returns were beams escaping into the lab**, some out to 9 m. The hull is built from exactly those escapees.
 
-The room *is* in the data. RANSAC on that same scan finds four genuine walls — two parallel pairs **86° apart**, the longest 7.6 m carrying 18% of the scan. The hull method simply cannot see them.
+### The pen's size, which nobody had measured
 
-### What was built, and why it is not merged
+The last handoff said this was blocking and that two fit variants disagreed (**2280 × 2760** and **1462 × 1565 mm**). It was settled from the scan itself — read the four perpendicular minima straight off `table-pen-scan.json`:
 
-Branch **`pose-arena-fit`**, pushed. `main` is untouched.
-
-It sweeps orientation and reads the two opposite walls off the projection histogram **two ways** — trimmed extremes, and range-weighted peaks — keeping whichever puts more of the scan on the resulting rectangle.
-
-| | Table pen (real scan) | Simulated closed room |
+| bearing | range | wall |
 | --- | --- | --- |
-| hull fit (on `main`) | 3% on walls, **never locks** | 1.6 mm median, 88% of scans, 0 relocks |
-| branch fit | **76% on walls, locks** | ~100 mm median, 83% of scans, 1 relock |
+| 32° | 1212 mm | front |
+| 122° | 976 mm | left |
+| 214° | 970 mm | rear |
+| 306° | 1217 mm | right |
 
-**It fixes the real environment and makes the clean-room case markedly worse.** That trade was never accepted, which is why it sits on a branch.
+90°, 92°, 92°, 86° apart — a clean rectangle. Opposite pairs sum to **2182** and **2193 mm**. An independent orientation sweep agrees at **2205 × 2212 mm, 66% on-edge**. Three further methods land within 60 mm.
 
-### The one measurement that unblocks it
+**The pen was ~2.2 m square. Both earlier numbers were wrong.**
 
-**Nobody has measured the pen with a tape.** Two variants of the fit gave **2280 × 2760 mm** and **1462 × 1565 mm** for the same scan. They cannot both be right, and without ground truth the 76% may be flattering a wrong answer.
+### The fix is to close the room, not to change the fitter
 
-**Do this before touching the algorithm again.** Then run `cd pi && .venv/bin/python tools/check_fit.py` on the branch and see which matches.
+Measured on the real pen scan:
 
-Worth raising with the team: a pen 1.5–2.5 m across, against an 860 mm limit, has room for about one gap and almost no driving. Fine for proving pose and clearance; thin as a demo arena. Bigger tables or a small real room would be better.
+| | pen | simulated closed room |
+| --- | --- | --- |
+| hull fit (`main`) | 3% on-edge, **never locks** | 1.6 mm median, 88%, 0 relocks |
+| replace fitter with a wall sweep | 2205 × 2212, 66% ✓ | only 28/66 frames within 200 mm ✗ |
+| *adaptive* clip radius | locks ✓ | 78% poses, **max error 2400 mm** ✗ |
+| fixed clip at 1800 mm | 2227 × 2265, **98%, locks** ✓ | untouched (clip off) ✓ |
+| **block the gaps physically** | 2283 × 2247, **99%, locks** ✓ | untouched ✓ |
+
+**Closing the room wins outright**, costs no code, and also fixes two things a clip does not: the occupancy map stops filling with lab returns, and `clearance()` starts measuring. In the open pen the right-hand side of the slice was 74% no-returns, over the 60% dropout limit, so Scout **correctly refused to measure** — meaning the headline width verdict would not fire in the one place there was a gap.
+
+### 🚨 The new finding: a square room cannot be fixed
+
+Separate from the gaps, and more dangerous because it is silent.
+
+Matching a fit back to the locked frame leans on the room's **shape**: stand a 4 × 5 m room on its side and the extents stop matching, so the wrong reading is rejected. **When both sides are equal that cue is gone.** If Scout then turns roughly 90° while it cannot see — someone leans over the lidar mid-corner — the scan that comes back is *identical* to the one it would have produced had it never turned.
+
+Measured with `tools/check_room.py`:
+
+| | comes back |
+| --- | --- |
+| square 2200 × 2200 | **90.2° out** |
+| oblong 4210 × 5090 | 0.2° out |
+
+**No algorithm fixes this.** The deceptive reading is the one that looks *more* continuous, not less — so any heading gate rejects the truth and admits the lie. Furniture does not help either: pose is read off the fitted rectangle alone, not its contents.
+
+The mitigation is a tape measure. **Make one side 300 mm longer than the other** and the ambiguity disappears. `pose.py` logs `ROOM IS SQUARE (w × l)` at lock time if you got it wrong.
+
+### `pose-arena-fit` is superseded — do not merge it
+
+The branch replaced the fitter to cope with the open pen. With the pen abandoned it is the wrong trade (it regressed the closed room from 1.6 mm to ~100 mm). **Keep the branch only for `pi/tools/fixtures/table-pen-scan.json`**, which is the only real RPLIDAR scan the project has.
 
 ---
 
-## 5. Six approaches that failed, and why — do not repeat them
+## 5. Approaches that failed — do not repeat them
+
+**On fitting the room:**
 
 1. **Plain point counts** → picks whatever is nearest. A lidar samples at a fixed angular step, so a surface returns points in inverse proportion to distance. A chair at 1.4 m beat the room wall at 3.9 m.
-2. **Range-weighted counts alone** → overcorrects. Two strays 9 m down a corridor outvote a real wall.
-3. **Scoring a wall by how far its returns run along it** → cannot discriminate. Every bin on one axis picks up the two *parallel* walls crossing it, so every bin scores the full room length.
-4. **Quantile-trimmed extremes (2%)** → deletes sparse walls. In the simulated room a ramp stands against the far wall leaving it **eleven** returns; trimming seven removes the wall.
-5. **Maximising on-edge fraction alone** → genuinely ambiguous. The *true* rectangle scores 83%; a wrong one cutting across the ramp's face scores **84%**. Hence the area tie-break — a room contains its furniture.
-6. **Requiring the rectangle to contain the scan** → right for a closed room, wrong for the pen, where 43% of returns legitimately escape through the gaps.
+2. **Range-weighted counts alone** → overcorrects. Two strays 9 m away outvote a real wall.
+3. **Scoring a wall by how far its returns run along it** → every bin on one axis picks up the two *parallel* walls crossing it, so every bin scores the full room length.
+4. **Quantile-trimmed extremes (2%)** → deletes sparse walls. A ramp against the far wall leaves it **eleven** returns; trimming seven removes the wall.
+5. **Maximising on-edge fraction alone** → the *true* rectangle scores 83%, a wrong one cutting across a ramp scores **84%**.
+6. **Requiring the rectangle to contain the scan** → right for a closed room, wrong for an open pen.
+7. **Angular contiguity as a wall test** → fails in an open arena, because the lab surfaces seen through the gaps are *genuinely* contiguous.
+8. **Choosing a clip radius per scan** → carves a high-scoring sub-rectangle out of near furniture. Max error 2400 mm.
 
-Two constraints that did help and should be kept: **walls must straddle the lidar** (it sits inside the room), and **ties go to the larger rectangle**.
+**On the square room:**
+
+9. **A heading gate to block 90° flips** → written, tested, **removed**. It is aimed the wrong way: the dangerous candidate has `dh ≈ 0` and the truthful one has `dh ≈ 90`, so the gate rejects the truth. Error was 90.2° with the gate on *or* off. Do not re-add it; build the room oblong instead.
+
+Two constraints that helped and should be kept: **walls must straddle the lidar**, and **ties go to the larger rectangle**.
 
 ---
 
 ## 6. Tools and fixtures
 
 ```
+cd pi && .venv/bin/python tools/check_room.py      # pose in simulated rooms of any shape — no hardware
+cd pi && .venv/bin/python tools/check_audit.py     # 17 clearance and gap checks — no hardware
 cd pi && .venv/bin/python tools/check_pose.py      # why is there no pose, on a LIVE Scout
-cd pi && .venv/bin/python tools/check_fit.py       # branch only: score the fit on both fixtures
-cd pi && .venv/bin/python tools/check_audit.py     # 17 clearance and gap checks
 ```
 
-`check_pose.py` reads one real scan over the WebSocket (the lidar port is held exclusively by the service) and walks it through every gate in `pose.py`, printing what each saw and wanted. It saves the scan to `pi/tools/scan-dump.json` — **that dump is how a scan gets handed to someone not standing in the room.**
+- **`check_room.py`** (new) casts real 360-ray scans in rooms built to order, wall-follows a lap, and checks every pose against the truth it came from. Reports heading error **separately** from position error, because a frame flip is a different bug from drift. Seven shapes plus the blind-turn case that demonstrates the square-room limitation as an executable check.
+- **`check_pose.py`** reads one real scan over the WebSocket (the lidar port is held exclusively by the service) and walks it through every gate in `pose.py`. It saves the scan to `pi/tools/scan-dump.json` — **that dump is how a scan gets handed to someone not standing in the room.**
+- `data/runs/room-scan.ndjson` — the simulated room, 4210 × 5090 mm, true pose in **every** frame.
+- `pi/tools/fixtures/table-pen-scan.json` (on `pose-arena-fit`) — the only real lidar scan we have.
 
-`check_fit.py` (branch) scores any change to `pose.py` against both fixtures at once. **Any change must be checked against both**, because they fail in opposite directions.
-
-- `pi/tools/fixtures/table-pen-scan.json` (branch) — a real scan from inside the pen. True size unknown.
-- `data/runs/room-scan.ndjson` — the simulated room, 4210 × 5090 mm, carrying the true pose in **every** frame. This is what makes `pose.py` testable without hardware.
+**Any change to `pose.py` must be checked against `check_room.py` *and* the recorded run.** The recorded-run check should be frame-for-frame identical unless you meant to change behaviour.
 
 ---
 
@@ -200,36 +243,57 @@ cd pi && .venv/bin/python tools/fake_esp32.py     # prints the exact next comman
 cd firmware && .venv/bin/pio run -t upload && .venv/bin/pio device monitor -b 115200
 ```
 
-`git` on this machine is the Xcode shim and is **blocked by an unaccepted licence**. Use the Command Line Tools binary — no sudo needed:
+`git` on this machine is the Xcode shim and is **blocked by an unaccepted licence**. Use the Command Line Tools binary — no sudo:
 
 ```
 /Library/Developer/CommandLineTools/usr/bin/git
 ```
 
+Environment: `SCOUT_ESP32_PORT`, `SCOUT_LIDAR_PORT` (`none` disables, or a device path), `SCOUT_CAMERA`, `SCOUT_LIDAR_OFFSET_DEG`, `SCOUT_PORT`.
+
 ---
 
 ## 8. What to do next, in order
 
-1. **Measure the pen with a tape.** Unblocks §4. Five minutes.
-2. **Plug the lidar back in**, restart the service, run `check_pose.py`.
-3. **Decide the `pose-arena-fit` question** — merge, keep tuning, or run both fits and pick per scan. Needs the tape measurement first.
-4. **Chase the motor driver and 5 V rail.** The only hard blocker for autonomy, unresolved all session.
-5. **Flash the ESP32.** Zero risk, one USB cable, toolchain already cached.
-6. **Set the Pi up** — hostname `scout`, hotspot, systemd. Removes the USB tether, which is what forced a laptop and a person into the arena and made the scans worse.
-7. **Tell the `gaps.py` author** the IMU is gone and `main` is v2 (or point them at §3).
-8. **Record a real run** once pose works, save to `data/runs/`, add to `runs/index.json`. Better demo insurance than the simulated file.
+The adapter has arrived, so the lidar is testable again. **Do Stage A before building the room** — otherwise a failure could be either the driver or the room and you will not know which.
 
-### If pose is never made to work in time
+### Stage A — is the lidar alive? (~10 min, anywhere)
 
-The demo degrades honestly rather than collapsing. **Clearance needs no position** — Scout still measures gaps and still fires width verdicts. What is lost is the map and placing findings on it. The replay still shows the full story, and `RUNBOOK.md` instructs the presenter to say it is a simulated room with scripted labels. **Do not let anyone narrate the replay as a recording of the robot.**
+1. Plug it in. `ls /dev/cu.*` must show a new entry. **Nothing new = a macOS driver problem** (CH340 or CP2102 depending on the adapter), not a Scout problem.
+2. `cd pi && SCOUT_ESP32_PORT=none SCOUT_CAMERA=none .venv/bin/python -m scout`
+   Want: `LIDAR connected on /dev/cu.… health GOOD`.
+   `LIDAR NOT FOUND` → it lists every port it saw; force one with `SCOUT_LIDAR_PORT=`.
+   `health ERROR` or repeated drops → **power**. Plug into the Mac directly, not a hub.
+3. Second terminal: `cd pi && .venv/bin/python tools/check_pose.py`.
+   **On a desk it will say `NO POSE`. That is correct — ignore it.** You only want **200+ returns** and a sane min/median/max.
+
+### Stage B — does the room work?
+
+4. **Build the room: oblong (one side 300 mm+ longer), closed corners, clear floor.** `RUNBOOK.md` §0.
+5. Lidar in the middle, service running. Watch for `room frame locked: W x L mm`. **If `ROOM IS SQUARE` appears, move a wall now.**
+6. `check_pose.py` again — check 4 (*is it a rectangle?*) wants **≥55%**; a closed room reads **95%+**. Below 55% is usually an open corner.
+7. Compare the locked size to a tape measure. If they disagree, **believe the tape** — the fit latched onto something that is not your wall.
+
+### Then
+
+8. **Chase the motor driver and the 5 V rail.** The only hard blocker for autonomy, open for two sessions.
+9. **Flash the ESP32.** Zero risk, one USB cable, toolchain cached.
+10. **Set the Pi up** — hostname `scout`, hotspot, systemd. Removes the USB tether that forced a laptop and a person into the arena and made the scans worse.
+11. **Record a real run** once pose works; save to `data/runs/`, add to `runs/index.json`. Better demo insurance than the simulated file.
+
+### If pose never works in time
+
+The demo degrades honestly rather than collapsing. **Clearance needs no position** — Scout still measures gaps and still fires width verdicts. What is lost is the map and placing findings on it. `RUNBOOK.md` instructs the presenter to say the replay is a simulated room with scripted labels. **Do not let anyone narrate the replay as a recording of the robot.**
 
 ---
 
 ## 9. Judgement calls, so they are not silently reversed
 
 - **Ramps are labelled, never judged.** Anything reintroducing a slope number is wrong.
+- **Build the room oblong.** Not a preference — a square room has an unfixable failure (§4).
 - **`pose: false` is honoured everywhere.** Every gate in `pose.py` fails closed.
-- **Clearance refuses to measure a blind side.** If a side of the slice is mostly no-returns, a near non-reflective surface may be hidden and the gap reads **too wide** — turning a barrier into a pass. That is the one error direction that matters for an accessibility tool.
-- **`unverified` gaps never become measurements** — inherited from the `evidence` model, which was better than what this session first wrote.
+- **Clearance refuses to measure a blind side.** If a side of the slice is mostly no-returns, a near non-reflective surface may be hidden and the gap reads **too wide** — turning a barrier into a pass. The one error direction that matters for an accessibility tool.
+- **`unverified` gaps never become measurements.**
 - **A gap Scout cannot drive towards is not a passage.** Without that rule every corner fires a false `width_fail` (15 false positives on the simulated run, now 2).
-- **The simulated run is a simulator, not a recording.** Rewritten this session because the old one emitted a `slope_fail` the robot can no longer produce, and `RUNBOOK.md` told the presenter to narrate it.
+- **The simulated run is a simulator, not a recording.**
+- **`pose.py` re-acquires rather than going permanently blind.** The relock path used to be unreachable when every rotation was rejected outright; Scout could lose pose forever with no way back.

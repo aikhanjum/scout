@@ -23,7 +23,6 @@ export function Live() {
   const limit = rule?.limit ?? 860;
   const clearance = telem && telem.lidar && telem.clearance_mm > 0 ? telem.clearance_mm : null;
   const stale = source.kind === 'live' && link !== 'up';
-  const roaming = telem?.mode === 'wall_follow';
 
   // One run button. Starting a run also records the frames in the browser; stopping saves them
   // as an .ndjson download, so every run leaves a replay file behind without a second button.
@@ -43,8 +42,6 @@ export function Live() {
   return (
     <>
       <div className="controls">
-        <button aria-pressed={roaming} onClick={() => send({ cmd: 'mode', mode: roaming ? 'idle' : 'wall_follow' })}>Roam</button>
-        <span className="gap" />
         <label className="field">Space <input value={space} onChange={(e) => setSpace(e.target.value)} placeholder="Room 1…" size={12} name="space" /></label>
         <button className={recording ? 'rec' : 'primary'} aria-pressed={recording} onClick={toggleRun}>{recording ? 'Stop run' : 'Start run'}</button>
         <button onClick={() => send({ cmd: 'mark', label: 'mark' })}>Mark</button>
@@ -191,7 +188,7 @@ function Pad({ drive, telem }: { drive: ReturnType<typeof useDrive>; telem: Tele
           {b('l')}<button className="danger" aria-label="Emergency stop" onClick={drive.stopAll}>Stop</button>{b('r')}
           <span />{b('b')}<span />
         </div>
-        <p className="hint">Arrow keys or WASD drive. Space stops everything. Driving takes over from roaming.</p>
+        <p className="hint">Arrow keys or WASD drive. Space stops everything. Release to stop.</p>
       </div>
     </section>
   );

@@ -1,5 +1,14 @@
 # Handoff, 2026-09-19 14:40 EDT
 
+> **Updated later the same day: the ESP32 never arrived and a SparkFun RedBoard took its place.**
+> It and its DK Electronics shield drive all four motors and are working on the bench. The Pi
+> service was adapted to the board's own serial dialect in `pi/scout/redboard.py`; `docs/PROTOCOL.md`
+> section 9 describes what is fitted, and section 2 and the status table below are corrected.
+> **The board has no buzzer and no LEDs**, so a width verdict is now spoken and shown but neither
+> beeped nor lit. The firmware bench notes are in `docs/HANDOFF-REDBOARD.md`, whose §7 and §8 are
+> annotated as superseded: there is still no IMU, the lidar was not denied, and networking is the
+> phone hotspot.
+
 Submission is **Sunday 2026-09-20 08:00 EDT** — roughly **17 hours** from this timestamp.
 
 Two audiences. **Sections 1–3 are for a teammate** who has been heads-down on something else and needs to know what Scout is and where it stands. **Sections 4 onward are the working detail** for whoever picks up the code next.
@@ -23,7 +32,7 @@ The old demo beat — *"Ramp too steep. 7.1 degrees."* — **is gone and cannot 
 A Roomba that draws an accessibility map. It drives itself around a room, maps it in 2D, and marks what it finds.
 
 ```
-ESP32 (motors, watchdog)  <--USB-->  Pi 4 (lidar, camera, map, audit)  <--wifi-->  dashboard
+RedBoard (motors, watchdog)  <--USB-->  Pi 4 (lidar, camera, map, audit)  <--wifi-->  dashboard
 ```
 
 The division of labour is the whole design:
@@ -67,11 +76,12 @@ This is the single most important operational fact in the project, and it is new
 | --- | --- |
 | Protocol v2, Pi brain, firmware, dashboard, simulator | **Done and pushed.** 33 commits on `main`. |
 | Pose / map / clearance / wall following | **Validated in simulation across 7 room shapes.** Never yet run in a real closed room. |
-| Lidar | **Works.** Adapter now obtained — **not yet tested with it.** |
-| Firmware build | **Compiles clean.** Never flashed to a board. |
+| Lidar | **Works.** Adapter obtained — **not yet tested with it.** Confirmed on hand; the reservation was not denied. |
+| Motor board + firmware | **Working on the bench.** SparkFun RedBoard, `06_serial_drive.ino`, all four motors under control, watchdog verified. The ESP32 firmware in `firmware/` is superseded and is not flashed to anything. |
 | Camera / CLIP labels | **Never executed.** No Pi, no camera, no model files. Degrades to `"unknown"`. |
-| Raspberry Pi | **Never used.** Not flashed, no hotspot, no systemd. |
-| Motor driver | **Does not exist.** Blocks driving only. |
+| Raspberry Pi | **Flashed, on the hotspot, service runs by hand and finds its devices.** systemd unit and the dashboard end-to-end check still to do. |
+| Motor driver | **Exists and works.** DK Electronics shield (2x L293D + SN74HC595) on the RedBoard. |
+| Beep and indicator LEDs | **Gone with the ESP32.** The spec wants a light, a beep and a spoken verdict; only the last two channels exist. D2/D3 are free on the shield if a piezo is wanted. |
 | 5 V rail | **Does not exist.** 18650s cannot feed a Pi 4. |
 | The demo room | **Not built yet.** Must be oblong and closed — see §4. |
 
@@ -98,12 +108,13 @@ Numbers that are real, all from simulation: room size within 10 mm, position **2
 
 ### If you are on hardware
 
-Two things block the *driving* half of the demo and have been open for two sessions:
+The motor driver is **no longer open.** A SparkFun RedBoard with a DK Electronics shield (2x L293D behind an SN74HC595) drives all four DAGU motors, ganged as two sides, left pair on one channel and right pair on the other. Keep the shield's PWR jumper **removed**, and never put the motor pack on the RedBoard's 5 V pin or barrel jack.
 
-1. **A motor driver.** Four DAGU motors, nothing to drive them. The firmware expects a two-channel H-bridge, left pair on channel A, right pair on B.
-2. **5 V regulation.** 18650s are 7.4–8.4 V; a Pi 4 needs a real 5 V at 3 A. Target a 5 A buck — **not an LM2596**, whose "3 A" is a peak figure that sags into brownout.
+One thing still blocks the *driving* half of the demo, open for three sessions:
 
-*Shortcut that removes item 2:* put the Pi and lidar on a **USB power bank**, give the 18650s to the motors alone.
+1. **5 V regulation.** 18650s are 7.4–8.4 V; a Pi 4 needs a real 5 V at 3 A. Target a 5 A buck — **not an LM2596**, whose "3 A" is a peak figure that sags into brownout.
+
+*Shortcut that removes it:* put the Pi and lidar on a **USB power bank**, give the 18650s to the motors alone.
 
 **Know this failure mode:** an undersized 5 V rail does not crash the Pi cleanly. It browns out the USB ports first, so the **lidar drops at random and it reads as a software bug**. `vcgencmd get_throttled` → `0x0` healthy, bit 0 = under-voltage now, bit 16 = since boot. Check before blaming code.
 
@@ -234,13 +245,13 @@ npm run fake                      # :8080, loops data/runs/room-scan.ndjson
 npm run dash                      # :5173
 
 # the brain, with a real lidar on the Mac
-cd pi && SCOUT_ESP32_PORT=none SCOUT_CAMERA=none .venv/bin/python -m scout
+cd pi && SCOUT_MOTOR_PORT=none SCOUT_CAMERA=none .venv/bin/python -m scout
 
-# the brain, with a fake ESP32 on a pty and no lidar
-cd pi && .venv/bin/python tools/fake_esp32.py     # prints the exact next command
+# the brain, with a fake motor board on a pty and no lidar
+cd pi && .venv/bin/python tools/fake_redboard.py  # prints the exact next command
 
-# flash the ESP32 (PlatformIO lives in firmware/.venv; there is no pipx on this machine)
-cd firmware && .venv/bin/pio run -t upload && .venv/bin/pio device monitor -b 115200
+# the motor board is flashed from the Arduino IDE (06_serial_drive.ino), not from this repo.
+# firmware/ holds the ESP32 bridge that was never used; nothing flashes it.
 ```
 
 `git` on this machine is the Xcode shim and is **blocked by an unaccepted licence**. Use the Command Line Tools binary — no sudo:
@@ -260,7 +271,7 @@ The adapter has arrived, so the lidar is testable again. **Do Stage A before bui
 ### Stage A — is the lidar alive? (~10 min, anywhere)
 
 1. Plug it in. `ls /dev/cu.*` must show a new entry. **Nothing new = a macOS driver problem** (CH340 or CP2102 depending on the adapter), not a Scout problem.
-2. `cd pi && SCOUT_ESP32_PORT=none SCOUT_CAMERA=none .venv/bin/python -m scout`
+2. `cd pi && SCOUT_MOTOR_PORT=none SCOUT_CAMERA=none .venv/bin/python -m scout`
    Want: `LIDAR connected on /dev/cu.… health GOOD`.
    `LIDAR NOT FOUND` → it lists every port it saw; force one with `SCOUT_LIDAR_PORT=`.
    `health ERROR` or repeated drops → **power**. Plug into the Mac directly, not a hub.
@@ -276,9 +287,13 @@ The adapter has arrived, so the lidar is testable again. **Do Stage A before bui
 
 ### Then
 
-8. **Chase the motor driver and the 5 V rail.** The only hard blocker for autonomy, open for two sessions.
-9. **Flash the ESP32.** Zero risk, one USB cable, toolchain cached.
-10. **Set the Pi up** — hostname `scout`, hotspot, systemd. Removes the USB tether that forced a laptop and a person into the arena and made the scans worse.
+8. **Chase the 5 V rail.** The motor driver is done; this is the last hardware blocker. A USB
+   power bank for the Pi and lidar removes it, leaving the cells to the motors alone.
+9. **Finish the Pi**: the systemd unit (`sudo cp pi/scout.service /etc/systemd/system/ &&
+   sudo systemctl enable --now scout`), then the reboot test and the dashboard end-to-end check.
+   Remove `brltty` first — it claims the RedBoard's CH340 and the port vanishes under you.
+10. **Decide on the beep.** A width verdict currently has one channel, not three. A piezo on the
+   shield's free D2 or D3 would return it; it is a firmware change, not a Pi one.
 11. **Record a real run** once pose works; save to `data/runs/`, add to `runs/index.json`. Better demo insurance than the simulated file.
 
 ### If pose never works in time

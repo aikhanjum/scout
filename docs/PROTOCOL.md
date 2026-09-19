@@ -1,9 +1,9 @@
 # Scout protocol, version 2
 
-This file is the contract between the ESP32 bridge firmware, the Pi service (BRAIN), the dashboard (Mission Control) and the fake Scout. It is frozen. To change it: agree with all three code owners, edit this file first, then the code, and add a line to the changelog at the bottom.
+This file is the contract between the motor-board firmware, the Pi service (BRAIN), the dashboard (Mission Control) and the fake Scout. It is frozen. To change it: agree with all three code owners, edit this file first, then the code, and add a line to the changelog at the bottom.
 
 ```
-ESP32 (motors, watchdog)  <-- USB serial, section 9 -->  Pi 4 (lidar, camera, map, this protocol)  <-- wifi, sections 1 to 7 -->  dashboard
+RedBoard (motors, watchdog)  <-- USB serial, section 9 -->  Pi 4 (lidar, camera, map, this protocol)  <-- wifi, sections 1 to 7 -->  dashboard
 ```
 
 There is no Hub. The dashboard talks to Scout (the Pi) directly. Anything that speaks sections 1 to 7 (the Pi, `tools/fake-scout`, a replay file) is interchangeable to the dashboard.
@@ -46,9 +46,9 @@ There is no Hub. The dashboard talks to Scout (the Pi) directly. Anything that s
 `GET /status`:
 
 ```json
-{"proto":2,"fw":"pi 0.2.0 / esp32 0.2.0","mode":"wall_follow","measuring":false,
+{"proto":2,"fw":"pi 0.2.0 / motor scoutable-motor-v1 ready","mode":"wall_follow","measuring":false,
  "run":{"active":true,"space":"E5 room 2024"},
- "devices":{"esp32":true,"lidar":true,"camera":true},
+ "devices":{"esp32":true,"motor":true,"lidar":true,"camera":true},
  "config":{"width_limit_mm":860,"robot_width_mm":260,"wall_target_mm":300,"cruise":0.4},
  "uptime_ms":123456,"ip":"172.20.10.4"}
 ```
@@ -85,12 +85,12 @@ One JSON object per command. Accepted two ways:
 
 Rules:
 
-- **Teleop watchdog.** In teleop, if no `drive` arrives for 500 ms, Scout stops. The watchdog lives on the ESP32 (section 9), so a Pi crash also stops the motors. The dashboard resends the current `drive` every 100 ms while a key or the joystick is held, and sends `stop` on release.
+- **Teleop watchdog.** In teleop, if no `drive` arrives for 600 ms, Scout stops. The watchdog lives on the motor board (section 9), so a Pi crash also stops the motors. The dashboard resends the current `drive` every 100 ms while a key or the joystick is held, and sends `stop` on release.
 - `drive` sets mode to `teleop`, which cancels `wall_follow`. This is how a human takes over mid-run.
 - `config` is partial: only the keys present change. `robot_width_mm` is a robot calibration; the dashboard sends limits but never sends `robot_width_mm`. Boot defaults are the values shown above.
 - `run` only controls the buffer, the map and the `space` label. Mapping and auditing run whether or not a run is active.
 - While `measuring` is true, `drive` is ignored and the motors stay stopped (up to about 3 s while the camera classifies).
-- `drive` with no ESP32 connected replies `{"ok":false,"err":"esp32 not connected"}`. `mode wall_follow` with no lidar replies `{"ok":false,"err":"lidar not connected"}`.
+- `drive` with no motor board connected replies `{"ok":false,"err":"motor board not connected"}`. `mode wall_follow` with no lidar replies `{"ok":false,"err":"lidar not connected"}`.
 
 ## 6. WebSocket frames (Scout to dashboard, JSON text, one object per frame)
 
@@ -156,7 +156,7 @@ Rules:
 - `confidence` is the classifier's score, 0..1. `label` is `"unknown"` and `confidence` is `0` when there is no camera or the score is below the floor in `config`.
 - `photo` is an id; the still is at `GET /photo/<id>`. It is `""` when no image was kept.
 - Events carrying a position are only emitted while `pose` is true.
-- On every `width_pass` or `width_fail` Scout lights the LED (red for fail, green for pass) and beeps (fail: two low beeps, pass: one high chirp) through the ESP32. `obstacle` and `ramp` are silent — they are observations, not verdicts.
+- On every `width_pass` or `width_fail` Scout **would** light an LED and beep, but the board that is fitted has neither (section 9), so the verdict reaches a human through the dashboard and its speech only. `obstacle` and `ramp` are silent either way — they are observations, not verdicts.
 
 ### Observable behaviour (what the dashboard can rely on)
 
@@ -171,7 +171,7 @@ Rules:
 One JSON object per line. Line 1 is the header. Every other line is a frame exactly as it went over `/ws`.
 
 ```
-{"type":"run","space":"E5 room 2024","fw":"pi 0.2.0 / esp32 0.2.0","started_t":5000000,"started_at":"2026-09-19T19:04:11.250Z","config":{"width_limit_mm":860,"robot_width_mm":260,"wall_target_mm":300,"cruise":0.4}}
+{"type":"run","space":"E5 room 2024","fw":"pi 0.2.0 / motor scoutable-motor-v1 ready","started_t":5000000,"started_at":"2026-09-19T19:04:11.250Z","config":{"width_limit_mm":860,"robot_width_mm":260,"wall_target_mm":300,"cruise":0.4}}
 {"type":"telem", ...}
 {"type":"map", ...}
 {"type":"event", ...}
@@ -218,33 +218,83 @@ Not on the wire, but a contract between whoever edits the files and the dashboar
 - One entry per space, one bucket per `time_bucket` of run time. `min_clearance_mm` is the narrowest valid clearance in the bucket (`null` if none was valid), `fails` counts `*_fail` events, `empty_share` is the fraction of lidar samples with no return.
 - Runs whose `fw` starts with `fake` are simulated. They are never in this file unless it was generated with `--simulated`, and then `includes_simulated` says so.
 
-## 9. Pi to ESP32 serial contract
+## 9. Pi to motor board serial contract
 
-USB serial, 115200 baud, 8N1, one message per line (`\n`). The Pi finds the port by probing every USB serial device for the ESP32's JSON lines, never by `/dev/ttyUSB0`.
+USB serial, 115200 baud, 8N1, one message per line (`\n`). The Pi finds the port by probing every
+USB serial device for the board's boot banner, never by `/dev/ttyUSB0`.
 
-Pi to ESP32, plain text:
+**The board is a SparkFun RedBoard** (ATmega328P, Uno clone, CH340 USB) carrying a DK Electronics
+motor shield (Adafruit v1 clone: 2x L293D behind an SN74HC595). It took the role the ESP32 was
+meant to have; the ESP32 never arrived. Its firmware is `06_serial_drive.ino` and it is owned by
+the firmware workstream.
 
-```
-D <v> <w>        drive. v, w in -1..1, w positive = left. No D for 500 ms: motors stop (the watchdog).
-S                stop now, no ramp-down. Also clears the watchdog.
-B [p]            beep. p 0 (default) one high chirp for pass, p 1 two low beeps for fail.
-L <red> <green>  LEDs, 0 or 1 each.
-T                self-test: each side forward and back, chirp, both LEDs. Blocks about 3 s.
-```
-
-ESP32 to Pi, JSON lines:
+**The board's dialect is its own, and the Pi translates.** `pi/scout/redboard.py` still accepts the
+lines below from the rest of the service and converts them; nothing above that file knows which
+board is fitted. The lines the service uses internally are unchanged:
 
 ```
-{"hello":"scout-esp32","fw":"0.2.0"}                     once at boot
-{"t":5123456,"v":0.40,"w":0.00}                          10 Hz
-{"err":"unknown cmd X"}                                  replies
+D <v> <w>        drive. v, w in -1..1, w positive = left.
+S                stop now. Also clears the watchdog.
+B [p]            beep.  NOT WIRED: this board has no buzzer. Accepted and discarded.
+L <red> <green>  LEDs.  NOT WIRED: this board has no indicator LEDs. Accepted and discarded.
+T                self-test. NOT WIRED.
 ```
 
-- `t` is the ESP32's `millis()`. The Pi ignores it for timing and uses its own clock.
-- The four motors are ganged as two sides: the left pair on one driver channel, the right pair on the other.
-- Opening the port resets the ESP32 (DTR). It reboots in about a second, prints `hello`, and streams. The Pi tolerates the bootloader's non-JSON lines.
+On the wire, after translation:
+
+```
+<left> <right>   drive, each -255..255, positive forward, skid steer. Left = v-w, right = v+w,
+                 both divided by the overshoot when either saturates, so a turn keeps its ratio.
+s                stop now
+?                status
+```
+
+Board to Pi, plain text:
+
+```
+scoutable-motor-v1 ready     banner, once, on every port open
+ok <left> <right>            accepted, with the clamped values actually applied
+err                          not parseable
+watchdog stop                nothing received for 600 ms, the board stopped itself
+```
+
+- **The watchdog is 600 ms**, not the ESP32's 500 ms. The dashboard resends every 100 ms while a
+  key is held and wall following sends at 10 Hz, so both satisfy it. It is the only thing that
+  stops the motors if the Pi service dies, so nothing may pet it on a timer while Scout moves.
+- **The board only speaks when spoken to.** It does not stream, so silence cannot mean "gone" on
+  its own. The Pi sends `?` after one second of its own silence and treats four seconds without a
+  reply as a disconnect. The keep-alive is suppressed whenever a `D` was sent recently.
+- **Opening the port resets the board** (DTR). It is deaf for about 1.5 s, so the Pi waits for the
+  banner before reporting `devices.motor` true; commands written before then are lost.
+- **Any non-zero duty below 70 is raised to 70 by the firmware**, because the gearboxes hum without
+  turning below that. So the Pi sends a real `0` for anything under a duty of 8 rather than letting
+  a creep be inflated ninefold into a lurch.
+- The four motors are ganged as two sides: the left pair on one channel, the right pair on the
+  other. There is no per-wheel control and none is needed.
+- `bump` and `stuck` in `telem` are always `[0, 0]` and `false`. This board reports neither.
+
+### What this costs, and it is demo-visible
+
+The spec says a failed clearance gets **a light, a beep and a spoken verdict**. This board has no
+buzzer and no LEDs, so **two of those three channels do not exist** and the verdict reaches a human
+through the dashboard and its speech alone. `redboard.py` logs the absence loudly once per command
+kind rather than failing silently. Restoring them is a firmware job: the shield leaves D2 and D3
+free, and a piezo on one of them would return the beep.
 
 ## Changelog
+
+v2.2, 2026-09-19: the motor board is a RedBoard, not an ESP32. Additive; `proto` stays `2`.
+
+- **Section 9 is rewritten for the board that exists.** The ESP32 never arrived; a SparkFun
+  RedBoard with a DK Electronics shield took the role and was already working. The Pi translates
+  in `pi/scout/redboard.py`, so sections 1-8 are untouched and the dashboard needs no change.
+- **`devices.motor` added to `/status`**, alongside `devices.esp32`, which keeps its name and its
+  meaning so existing consumers keep working. Both report the same board. New consumers should
+  read `motor`; `esp32` will be removed once nothing reads it.
+- **`B`, `L` and `T` are accepted and discarded.** This board has no buzzer, no LEDs and no
+  self-test, so a width verdict is now spoken and shown, but not beeped or lit.
+- The watchdog is **600 ms**, not 500. Nothing had to change to satisfy it.
+- `SCOUT_MOTOR_PORT` is the new name for `SCOUT_ESP32_PORT`. The old name still works.
 
 v2.1, 2026-09-19: `started_at` added to the run header (section 7) and `data/history.json` defined (section 8). Additive, `proto` stays 2.
 

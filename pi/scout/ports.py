@@ -1,5 +1,7 @@
-"""Find the ESP32 and the lidar among the USB serial ports by probing what answers.
-Never by /dev/ttyUSB0: the two devices swap names between boots."""
+"""Find the motor board and the lidar among the USB serial ports by probing what answers.
+Never by /dev/ttyUSB0: the two devices swap names between boots, and on the Pi both arrive as
+/dev/ttyUSB* with vendor IDs that do not reliably tell them apart. Probing by content is why
+Scout needs no udev rule and survives the two being plugged in either order."""
 import json
 import logging
 import threading
@@ -11,6 +13,8 @@ from serial.tools import list_ports
 from . import rplidar
 
 log = logging.getLogger("scout.ports")
+
+MOTOR_BANNER = "scoutable-motor"   # the RedBoard firmware's boot banner, and how we recognise it
 
 in_use = set()              # devices our own threads hold open; never probe those
 lock = threading.Lock()     # one probe at a time, so the two device threads never open the same port together
@@ -26,28 +30,27 @@ def describe(p):
     return f"{p.device} [{(p.manufacturer or '').strip()} {(p.description or '').strip()} vid={p.vid:#06x} pid={p.pid:#06x} sn={p.serial_number}]"
 
 
-def looks_like_esp32(device, listen_s=3.0):
-    """Open the port (which resets a dev board) and listen for the bridge's JSON lines. Returns its fw or None."""
+def looks_like_motor(device, listen_s=4.0):
+    """Open the port, which resets the board over DTR, and wait for its boot banner.
+
+    Returns the banner line or None. The banner is the whole test: the RedBoard's CH340 and the
+    lidar's USB adapter can carry the same vendor ID as each other's, and both enumerate as
+    /dev/ttyUSB*, so the only trustworthy question is what answers. A lidar opened at 115200
+    returns noise that does not contain the banner, which is the correct answer for it.
+    """
     try:
-        with serial.Serial(device, 115200, timeout=0.2, exclusive=True) as s:
+        with serial.Serial(device, 115200, timeout=0.5, exclusive=True) as s:
             end = time.monotonic() + listen_s
-            fw = None
             while time.monotonic() < end:
                 line = s.readline()
                 if not line:
                     continue
-                try:
-                    obj = json.loads(line.decode("utf-8", "replace"))
-                except ValueError:
-                    continue            # bootloader chatter or a torn line
-                if isinstance(obj, dict) and "hello" in obj:
-                    return obj.get("fw", "?")
-                if isinstance(obj, dict) and "pitch" in obj:
-                    fw = fw or "?"      # already running: keep listening briefly for the hello, else accept
-                    end = min(end, time.monotonic() + 0.5)
-            return fw
+                text = line.decode("utf-8", "replace").strip()
+                if MOTOR_BANNER in text:
+                    return text
+            return None
     except (serial.SerialException, OSError) as e:
-        log.debug("probe %s as ESP32: %s", device, e)
+        log.debug("probe %s as motor board: %s", device, e)
         return None
 
 
@@ -71,8 +74,8 @@ def looks_like_lidar(device):
 
 
 def find(kind):
-    """kind is 'esp32' or 'lidar'. Returns (device, detail) or (None, None). Marks the device in use."""
-    probe = looks_like_esp32 if kind == "esp32" else looks_like_lidar
+    """kind is 'motor' or 'lidar'. Returns (device, detail) or (None, None). Marks the device in use."""
+    probe = looks_like_motor if kind == "motor" else looks_like_lidar
     with lock:
         for p in usb_serial_ports():
             if p.device in in_use:

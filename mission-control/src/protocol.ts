@@ -64,7 +64,7 @@ export type Command =
 export interface Status {
   proto: number; fw: string; mode: Mode; measuring: boolean;
   run: { active: boolean; space: string };
-  devices: { esp32: boolean; lidar: boolean; camera: boolean };
+  devices: { esp32: boolean; motor?: boolean; lidar: boolean; camera: boolean };
   config: Config; uptime_ms: number; ip: string;
 }
 

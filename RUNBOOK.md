@@ -42,7 +42,7 @@ Power the Pi. It starts on its own through systemd. Give it 30 seconds, then fro
 curl http://scout.local:8080/status
 ```
 
-You want `"lidar":true` and `"esp32":true` in `devices`. `"camera":false` only costs you the labels: obstacles come out as "unknown" and everything else still works. If `curl` cannot resolve `scout.local`, the Pi is not on the hotspot. Turn the hotspot on first, then reboot the Pi.
+You want `"lidar":true` and `"motor":true` in `devices` (`"esp32"` is the same flag under its old name). `"camera":false` only costs you the labels: obstacles come out as "unknown" and everything else still works. If `curl` cannot resolve `scout.local`, the Pi is not on the hotspot. Turn the hotspot on first, then reboot the Pi.
 
 First time on a new Pi, or if `systemctl` says there is no `scout` unit, do the install steps in
 `pi/README.md` once. After that it starts on every boot.
@@ -112,12 +112,13 @@ The `[Service]` line is required. Without it the override is ignored and nothing
 
 **Never set `SCOUT_LIDAR_PORT=none`.** That switches the lidar off and everything else still looks healthy, which is the most confusing failure there is.
 
-## 6. If the ESP32 drops
+## 6. If the motor board drops
 
-Driving stops working and `POST /cmd` replies `esp32 not connected`. Slope events stop. The lidar and width keep working.
+Driving stops working and `POST /cmd` replies `motor board not connected`. The lidar and width keep working.
 
-1. Unplug and replug its USB, wait 5 seconds.
-2. `journalctl -u scout -f` and look for `ESP32 connected`.
+1. Unplug and replug its USB, wait 5 seconds. Opening the port resets the board; it needs about
+   2 seconds to come back and say `scoutable-motor-v1 ready` before it will accept anything.
+2. `journalctl -u scout -f` and look for `MOTOR  connected`.
 3. If it connects but will not drive, the teleop watchdog is doing its job: the dashboard must be the focused window. Click the page, then hold a key.
 
 ## 7. If the dashboard shows nothing at all
@@ -133,17 +134,17 @@ Three terminals:
 ```
 npm run fake                                         # fake Scout on :8080
 npm run dash                                         # dashboard on :5173
-cd pi && .venv/bin/python tools/fake_esp32.py        # prints a pty path
+cd pi && .venv/bin/python tools/fake_redboard.py     # prints a pty path
 ```
 
 Then the real Pi service against real USB hardware, **on 8081** because the fake already holds 8080.
-Use `/dev/ttysNNN` from the fake ESP32's output, or leave `SCOUT_ESP32_PORT` off entirely to use a
-real ESP32 on USB:
+Use `/dev/ttysNNN` from the fake board's output, or leave `SCOUT_MOTOR_PORT` off entirely to use
+the real board on USB:
 
 ```
 cd pi
-SCOUT_PORT=8081 SCOUT_ESP32_PORT=/dev/ttysNNN .venv/bin/python -m scout   # fake ESP32
-SCOUT_PORT=8081 .venv/bin/python -m scout                                 # real ESP32 on USB
+SCOUT_PORT=8081 SCOUT_MOTOR_PORT=/dev/ttysNNN .venv/bin/python -m scout   # fake board
+SCOUT_PORT=8081 .venv/bin/python -m scout                                 # real board on USB
 ```
 
 Point the dashboard at `ws://localhost:8081/ws` for the real lidar, or `ws://localhost:8080/ws` for the fake.
@@ -159,6 +160,8 @@ npm run gen                                          # regenerate the replay fil
 ## 10. Before you present
 
 - Hotspot on, 2.4 GHz. Pi booted. `curl http://scout.local:8080/status` answers with all three devices true.
+- A failed width verdict is **spoken and shown, not beeped or lit** -- the RedBoard has no buzzer
+  and no LEDs. Keep the dashboard volume up; it is the only channel the verdict has.
 - Dashboard full screen, clicked once, volume up, pointed at `ws://scout.local:8080/ws`.
 - The room is clear of feet and bags. People standing in it become obstacles and break the rectangle fit, and when the fit goes so does the map.
 - Press **ROAM** once and watch the room close before you start talking. If the map does not close a loop, drive it by hand: the width verdicts still fire.

@@ -95,7 +95,7 @@ setInterval(() => { // drive arrives at 10 Hz, so summarise it once a second
 
 const status = () => ({
   proto: 2, fw: FW, mode: lastTelem.mode ?? 'idle', measuring: !!lastTelem.measuring,
-  run, devices: { esp32: true, lidar: true, camera: false }, config,
+  run, devices: { esp32: true, motor: true, lidar: true, camera: false }, config,
   uptime_ms: Date.now() - boot, ip: '127.0.0.1',
 });
 

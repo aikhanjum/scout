@@ -1,6 +1,6 @@
 # Scout
 
-Scout is a small rover that drives itself around a room like a Roomba and draws a 2D accessibility map of it. Its RPLIDAR A2M8 does the geometry — where the walls are, where obstacles are, and how wide the gaps between them are — and the Pi camera does the naming, saying what each obstacle is and whether it is a ramp. Every gap is checked against the Ontario Building Code's 860 mm clear width, and anything too narrow gets a red light, a beep and a spoken verdict on the spot. A Raspberry Pi 4 is the brain, an ESP32 drives the motors, and a browser dashboard shows the map filling in live. Built at Hack the North 2026.
+Scout is a small rover that drives itself around a room like a Roomba and draws a 2D accessibility map of it. Its RPLIDAR A2M8 does the geometry — where the walls are, where obstacles are, and how wide the gaps between them are — and the Pi camera does the naming, saying what each obstacle is and whether it is a ramp. Every gap is checked against the Ontario Building Code's 860 mm clear width, and anything too narrow is called out on the spot — shown on the dashboard and spoken aloud. A Raspberry Pi 4 is the brain, a SparkFun RedBoard drives the motors, and a browser dashboard shows the map filling in live. Built at Hack the North 2026.
 
 Scout has no IMU and measures no slope: a ramp meeting a horizontal scan plane looks exactly like a wall. So ramps are **labelled by the camera and never judged**, and clearance width is the only building-code verdict Scout gives.
 
@@ -27,15 +27,15 @@ Port 8080 busy? `PORT=8081 npm run fake`, then type `ws://localhost:8081/ws` in 
 | Catch up on where the project is, or pick up the work | `docs/HANDOFF.md` first |
 | Understand the plan, milestones, demo | `docs/SPEC.md`, then `CLAUDE.md` for the rules |
 | Send or receive any frame or serial line | `docs/PROTOCOL.md`, the frozen contract |
-| Flash the ESP32 | `firmware/README.md` |
-| Run the brain on the Mac or the Pi | `pi/README.md` (Python; finds the ESP32 and the lidar on USB by itself) |
+| Flash the motor board | `docs/HANDOFF-REDBOARD.md` §§4 and 9 (`06_serial_drive.ino`, Arduino IDE) |
+| Run the brain on the Mac or the Pi | `pi/README.md` (Python; finds the motor board and the lidar on USB by itself) |
 | Wire the robot | `hardware/PINMAP.md` |
 | Add rules, labels, replay files | `data/README.md` |
 | Upload runs to Tiger Data, refresh "Room over time" | `tools/upload-run/README.md` |
 | See what was cut and why | `docs/LATER.md` |
 
 ```
-mission-control/   dashboard (Vite + React)     pi/     brain (Python)            firmware/   ESP32 bridge (PlatformIO)
+mission-control/   dashboard (Vite + React)     pi/     brain (Python)            firmware/   ESP32 bridge (unused)
 tools/fake-scout/  fake robot + room simulator  data/   rules and recorded runs   docs/       spec, protocol, later
 ```
 

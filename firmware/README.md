@@ -1,5 +1,11 @@
 # firmware
 
+> **SUPERSEDED, 2026-09-19.** The ESP32 never arrived from the hardware desk. Scout's motor
+> controller is a **SparkFun RedBoard** running `06_serial_drive.ino`, flashed from the Arduino
+> IDE and owned by the firmware workstream; `docs/PROTOCOL.md` section 9 describes the board that
+> is actually fitted. **Nothing below is flashed to Scout, and `npm run flash` has been removed.**
+> This directory is kept only because the code compiles clean and costs nothing to leave alone.
+
 ESP32 bridge: motors, 500 ms watchdog, beep, LEDs. Speaks `docs/PROTOCOL.md` section 9 over USB serial. No wifi and no IMU — Scout senses with the lidar and camera on the Pi. Pins and sign flips are in `src/config.h` and mirror `hardware/PINMAP.md`.
 
 ## Build and flash
@@ -12,7 +18,7 @@ pio run -t upload                # flash the board on USB
 pio device monitor -b 115200     # watch the JSON lines. Type T + Enter for the self-test.
 ```
 
-Or from the repo root: `npm run flash`.
+(`npm run flash` was removed from `package.json`: it would flash a board Scout does not have.)
 
 ## Bring-up (hello hardware)
 

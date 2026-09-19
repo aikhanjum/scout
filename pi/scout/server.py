@@ -47,8 +47,8 @@ class Scout:
     """Everything the protocol exposes. Called from the aiohttp loop only; device threads just
     leave snapshots behind."""
 
-    def __init__(self, esp32, lidar, camera, pose, grid, audit, follower, cfg):
-        self.esp32, self.lidar, self.camera = esp32, lidar, camera
+    def __init__(self, motor, lidar, camera, pose, grid, audit, follower, cfg):
+        self.motor, self.lidar, self.camera = motor, lidar, camera
         self.pose, self.grid, self.audit, self.follower = pose, grid, audit, follower
         self.cfg = cfg
         self.mode = "idle"
@@ -72,13 +72,16 @@ class Scout:
 
     # ---- protocol ----
     def fw(self):
-        return f"pi {config.VERSION} / esp32 {self.esp32.fw or 'n/a'}"
+        return f"pi {config.VERSION} / motor {self.motor.fw or 'n/a'}"
 
     def status(self):
         return {
             "proto": 2, "fw": self.fw(), "mode": self.mode, "measuring": self.measuring,
             "run": dict(self.run),
-            "devices": {"esp32": self.esp32.connected, "lidar": self.lidar.connected,
+            # "esp32" is the wire key from protocol v2 and the dashboard still reads it; the
+            # board behind it is now a RedBoard. "motor" is the same flag under its real name.
+            "devices": {"esp32": self.motor.connected, "motor": self.motor.connected,
+                        "lidar": self.lidar.connected,
                         "camera": bool(self.camera and self.camera.connected)},
             "config": dict(self.cfg), "uptime_ms": self.t(), "ip": _ip(),
         }
@@ -91,13 +94,13 @@ class Scout:
             if k == "drive":
                 if self.measuring:
                     return {"ok": True}                       # ignored while looking, motors stay stopped
-                if not self.esp32.connected:
-                    return {"ok": False, "err": "esp32 not connected"}
+                if not self.motor.connected:
+                    return {"ok": False, "err": "motor board not connected"}
                 self.mode = "teleop"                          # a human taking over cancels roaming
                 self.follower.reset()
-                self.esp32.send(f"D {_clamp(c.get('v', 0)):.2f} {_clamp(c.get('w', 0)):.2f}")
+                self.motor.send(f"D {_clamp(c.get('v', 0)):.2f} {_clamp(c.get('w', 0)):.2f}")
             elif k == "stop":
-                self.esp32.send("S")
+                self.motor.send("S")
                 self.mode = "idle"
                 self.follower.reset()
             elif k == "mode":
@@ -107,7 +110,7 @@ class Scout:
                 if m == "wall_follow" and not self.lidar.connected:
                     return {"ok": False, "err": "lidar not connected"}
                 if m != "wall_follow":
-                    self.esp32.send("S")
+                    self.motor.send("S")
                 self.follower.reset()
                 self.mode = m
             elif k == "run":
@@ -133,7 +136,7 @@ class Scout:
                     return {"ok": False, "err": f"unknown action {c.get('action')}"}
                 self.reset_map()
             elif k == "beep":
-                self.esp32.send("B 0")
+                self.motor.send("B 0")
             elif k == "config":
                 for key in CONFIG_KEYS:
                     if isinstance(c.get(key), (int, float)) and not isinstance(c.get(key), bool):
@@ -161,9 +164,9 @@ class Scout:
         # Only verdicts light up. An obstacle or a ramp is an observation, not a judgement
         # (PROTOCOL.md section 6).
         if kind == "width_fail":
-            self.esp32.send("L 1 0"); self.esp32.send("B 1"); self.led_off_at = time.monotonic() + 3
+            self.motor.send("L 1 0"); self.motor.send("B 1"); self.led_off_at = time.monotonic() + 3
         elif kind == "width_pass":
-            self.esp32.send("L 0 1"); self.esp32.send("B 0"); self.led_off_at = time.monotonic() + 3
+            self.motor.send("L 0 1"); self.motor.send("B 0"); self.led_off_at = time.monotonic() + 3
         log.info("event %s", {k: v for k, v in frame.items() if k != "type"})
 
     # ---- the room frame ----
@@ -181,7 +184,7 @@ class Scout:
 
     def telem(self, scan, width_mm):
         p = self.pose
-        d = self.esp32.drive
+        d = self.motor.drive
         return {
             "type": "telem", "t": self.t(), "mode": self.mode, "measuring": self.measuring,
             "lidar": bool(scan),
@@ -211,7 +214,7 @@ class Scout:
         the 10 Hz loop keeps serving telemetry throughout with `measuring` true.
         """
         self.measuring = True
-        self.esp32.send("S")
+        self.motor.send("S")
         try:
             label, conf, photo, is_ramp = await loop.run_in_executor(None, self.camera.look) \
                 if self.camera else ("unknown", 0.0, "", False)
@@ -238,7 +241,7 @@ class Scout:
             # there is nothing reporting wheel speed, so assume it is moving: holding a pose that
             # is only valid while stationary, for a lidar someone is carrying across the room, puts
             # returns metres from where they were taken and writes them into the map as fact.
-            d = self.esp32.drive
+            d = self.motor.drive
             moving = True if d is None else (abs(d.v) > 0.01 or abs(d.w) > 0.01)
 
             if scan:
@@ -272,11 +275,11 @@ class Scout:
                 if self.follower.blocked and self._look_task is None \
                         and now - self._looked_at > LOOK_COOLDOWN_S:
                     self._look_task = asyncio.create_task(self.look_and_name(loop))
-                elif self.esp32.connected:
-                    self.esp32.send(f"D {_clamp(v):.2f} {_clamp(w):.2f}")
+                elif self.motor.connected:
+                    self.motor.send(f"D {_clamp(v):.2f} {_clamp(w):.2f}")
 
             if self.led_off_at and now >= self.led_off_at:
-                self.esp32.send("L 0 0")
+                self.motor.send("L 0 0")
                 self.led_off_at = None
 
             self.tick += 1

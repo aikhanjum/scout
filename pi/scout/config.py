@@ -9,7 +9,9 @@ def _env(name, default, cast=str):
 
 VERSION = "0.2.0"
 PORT = _env("SCOUT_PORT", 8080, int)
-ESP32_PORT = _env("SCOUT_ESP32_PORT", None)          # unset: probe. "none": disabled. Else a device path.
+# The motor board. SCOUT_ESP32_PORT is the old name for it and still works, because it is what
+# RUNBOOK.md, the systemd override recipe and anyone's shell history already say.
+MOTOR_PORT = _env("SCOUT_MOTOR_PORT", None) or _env("SCOUT_ESP32_PORT", None)   # unset: probe. "none": disabled.
 LIDAR_PORT = _env("SCOUT_LIDAR_PORT", None)
 LIDAR_OFFSET_DEG = _env("SCOUT_LIDAR_OFFSET_DEG", 0.0, float)  # the lidar angle that points straight ahead
 CAMERA = _env("SCOUT_CAMERA", "on")                            # "none" disables the camera

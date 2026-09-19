@@ -8,7 +8,7 @@ from aiohttp import web
 from . import config, ports
 from .audit import Audit
 from .camera import Camera
-from .esp32 import Esp32
+from .redboard import RedBoard
 from .lidar import Lidar
 from .mapping import Grid
 from .pose import Pose
@@ -36,25 +36,25 @@ def main():
     logging.getLogger("aiohttp.access").setLevel(logging.WARNING)
     log.info("scout pi %s starting. USB serial ports: %s", config.VERSION, ports.seen())
 
-    esp32 = Esp32(config.ESP32_PORT)
+    motor = RedBoard(config.MOTOR_PORT)
     lidar = Lidar(config.LIDAR_PORT, config.LIDAR_OFFSET_DEG)
     # One probe pass now, so the startup log says what is connected. The threads take these as a
     # first hint and re-probe by content whenever a device goes away, so an unplug and replug onto
     # a new device name still works.
-    if esp32.enabled and esp32.fixed_port is None:
-        esp32.port_hint, fw = ports.find("esp32")
-        if esp32.port_hint:
-            esp32.fw = fw
-            log.info("ESP32  found on %s (fw %s)", esp32.port_hint, fw)
+    if motor.enabled and motor.fixed_port is None:
+        motor.port_hint, banner = ports.find("motor")
+        if motor.port_hint:
+            motor.fw = banner
+            log.info("MOTOR  found on %s (%s)", motor.port_hint, banner)
         else:
-            log.error("ESP32  NOT FOUND: driving disabled. Ports seen: %s", ports.seen())
+            log.error("MOTOR  NOT FOUND: driving disabled. Ports seen: %s", ports.seen())
     if lidar.enabled and lidar.fixed_port is None:
         lidar.port_hint, info = ports.find("lidar")
         if lidar.port_hint:
             log.info("LIDAR  found on %s (model %s fw %s)", lidar.port_hint, info.model, info.firmware)
         else:
             log.error("LIDAR  NOT FOUND: mapping, width and roaming disabled. Ports seen: %s", ports.seen())
-    esp32.start()
+    motor.start()
     lidar.start()
 
     camera = None
@@ -64,7 +64,7 @@ def main():
         log.warning("CAMERA DISABLED (SCOUT_CAMERA=none): obstacles will be reported as 'unknown'")
 
     cfg = dict(config.CONFIG)
-    scout = Scout(esp32, lidar, camera, Pose(), Grid(), Audit(cfg), WallFollow(cfg), cfg)
+    scout = Scout(motor, lidar, camera, Pose(), Grid(), Audit(cfg), WallFollow(cfg), cfg)
     log.info("serving http://%s:%d  ws://%s:%d/ws  (also localhost)", _ip(), config.PORT, _ip(), config.PORT)
     try:
         web.run_app(make_app(scout), host="0.0.0.0", port=config.PORT, print=None, access_log=None)

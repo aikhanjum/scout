@@ -86,7 +86,10 @@ async function fetchStatus(wsUrl: string, gen: number) {
     const st: Status = await (await fetch(`${httpOrigin(wsUrl)}/status`)).json();
     if (gen !== generation) return;
     const d = st.devices ?? { esp32: false, lidar: false, camera: false };
-    const missing = Object.entries(d).filter(([, ok]) => !ok).map(([k]) => k);
+    // `esp32` is protocol v2's old name for `motor` and Scout sends both; report it once.
+    const missing = Object.entries(d)
+      .filter(([k, ok]) => !ok && !(k === 'esp32' && 'motor' in d))
+      .map(([k]) => k);
     store().set({
       detail: `fw ${st.fw}  ${st.ip}`
         + (missing.length ? `  no ${missing.join('/')}` : '')

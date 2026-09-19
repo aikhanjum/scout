@@ -24,7 +24,7 @@ Port 8080 busy? `PORT=8081 npm run fake`, then type `ws://localhost:8081/ws` in 
 
 | I want to | Go to |
 | --- | --- |
-| Pick up where the last session stopped | `docs/HANDOFF.md` first |
+| Catch up on where the project is, or pick up the work | `docs/HANDOFF.md` first |
 | Understand the plan, milestones, demo | `docs/SPEC.md`, then `CLAUDE.md` for the rules |
 | Send or receive any frame or serial line | `docs/PROTOCOL.md`, the frozen contract |
 | Flash the ESP32 | `firmware/README.md` |

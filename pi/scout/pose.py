@@ -8,8 +8,8 @@ nothing to drift.
 
 The room frame is locked on the first good fit, with x along the longer wall. Later fits are matched
 to it by picking whichever rotation is most continuous with the last pose. Position does most of the
-work there: between scans at 5.5 Hz Scout moves about 80 mm, so a wrong 90-degree reading lands
-metres away and is never the cheapest. Heading alone cannot separate the rotations mid-corner.
+work there: between scans at the A2M8's 10 Hz Scout moves about 40 mm, so a wrong 90-degree reading
+lands metres away and is never the cheapest. Heading alone cannot separate the rotations mid-corner.
 
 **Build the room oblong.** A square room has a failure this file cannot fix. Telling the four
 rotations apart leans on the room's shape -- stand a 4 x 5 m room on its side and the extents stop
@@ -43,7 +43,7 @@ MAX_LOST_BUDGET = 260.0  # ceiling on that, so a long loss never waves a bad fit
 SIZE_REJECT_MM = 600     # total size mismatch above which this scan is not the whole room
 MIN_VISIBLE = 0.5        # fraction of a wall-to-wall span that must be visible to rebuild the rest
 MIN_WALL_POINTS = 8      # how much more populated one extreme must be to be called the real wall
-HOLD_SCANS = 40          # scans a stopped robot may coast on its last pose (about 7 s at 5.5 Hz)
+HOLD_SCANS = 40          # scans a stopped robot may coast on its last pose (about 4 s at 10 Hz)
 
 
 def scan_points(scan):
@@ -278,8 +278,10 @@ class Pose:
                 # and is never the cheapest. Heading alone cannot tell the four apart mid-corner.
                 cost = dh + math.hypot(px - self.x, py - self.y) / JUMP_PER_DEG_MM
                 # The budget grows with every scan since the last accepted pose: after a second of
-                # no fits Scout really has moved, so the honest jump is bigger than it would be at
-                # 5.5 Hz. It grows by what Scout could actually have driven, not without bound.
+                # no fits Scout really has moved, so the honest jump is bigger than it is between
+                # two consecutive scans. It grows by what Scout could have driven, not without
+                # bound -- at 10 Hz and cruise that is about 40 mm a scan, and the allowance here
+                # is deliberately twice that so a slow fix never costs the lock.
                 if cost > ceiling:
                     continue
                 if best is None or cost < best[0]:

@@ -24,7 +24,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from scout import pose as P  # noqa: E402
 
-HZ = 5.5                 # lidar rotations per second, so one pose fix per scan
+HZ = 10.0                # A2M8 rotations per second (docs/SPEC.md), so one pose fix per scan
 CRUISE_MMS = 400.0       # driving speed along a wall
 TURN_DEGS = 70.0         # in-place turn rate at a corner
 STANDOFF_MM = 300.0      # how far off the wall Scout follows

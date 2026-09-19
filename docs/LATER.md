@@ -23,6 +23,15 @@ Everything cut from the plan, with the reason. New ideas go here, not in code. N
 - **Front-distance obstacle stop**: the lidar sees ahead now; a "stop if anything is under 250 mm ahead while driving forward" rule is 10 lines in `pi/scout/server.py` and worth doing before the phone rides on Scout.
 - **Wheel encoders, mapping, SLAM, floor plans from the lidar**: no odometry by design. The A1 could do a floor-plan slice per space one day.
 
+## Cut on 2026-09-19 after the lidar went in
+
+- **A widening gate ahead in the fake Scout**: its scan world has one corridor width per frame, so it can only draw a gate that is narrower than the lane Scout is in. A gate that opens out is not drawn, and the fake does not claim a gap its own points do not show. Fine for the table course, which only narrows.
+- **Tuning the gap audit on the real course**: `GAP_AHEAD_DEG` and `GAP_MAX_RANGE_MM` in `pi/scout/audit.py` were set by eye. On a desk at scale 1.0 the gap source fires a few width events a minute, because a 230 mm gap between two objects really is under 860 mm. On the clean lane it should be quiet. Verify it there, then tighten if it chatters.
+- **`step` gaps in the audit**: a range step is the corner of an object, not an opening, so it is drawn and never audited. If a door frame ever reads as `step` rather than `see_through`, revisit.
+- **Express scan for the other models**: only the standard and capsule formats are decoded. Ultra capsules (A3 boost, S series) fall back to the standard stream, which works but at half the rate.
+- **Resolving an `unverified` gap by moving**: driving past changes the incidence angle, so a shiny or grazing surface starts returning while a real opening stays open. Two rotations from different positions would settle most of them. Needs position, which Scout does not have.
+- **Lidar view extras**: no scrubbing, no history, no measuring two points. The range selector and the mm toggle are all of it.
+
 ## Ideas parked
 
 - Auto-pin: match event timestamps to the phone's ARKit pose (needs EYES).

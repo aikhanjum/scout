@@ -1,5 +1,6 @@
-"""The ESP32 bridge over USB serial (PROTOCOL.md section 8): JSON lines in, text commands out.
-A thread owns the port and reconnects forever. Readers take the latest Imu snapshot."""
+"""The ESP32 bridge over USB serial (PROTOCOL.md section 9): JSON lines in, text commands out.
+A thread owns the port and reconnects forever. The board drives the motors, keeps the 500 ms
+watchdog, and beeps and blinks. It has no IMU: Scout senses with the lidar and the camera."""
 import json
 import logging
 import threading
@@ -16,13 +17,10 @@ SILENCE_S = 3.0   # no line for this long means the board is gone
 
 
 @dataclass(frozen=True)
-class Imu:
-    pitch: float
-    roll: float
-    yaw: float
+class Drive:
+    """What the board says it is doing, echoed back at 10 Hz."""
     v: float
     w: float
-    ok: bool       # the MPU6050 answered on I2C
 
 
 class Esp32:
@@ -33,14 +31,14 @@ class Esp32:
         self.port = None
         self.fw = ""
         self.connected = False
-        self.imu: Optional[Imu] = None
+        self.drive: Optional[Drive] = None
         self._ser = None
         self._lock = threading.Lock()
         self._misses = 0
 
     def start(self):
         if not self.enabled:
-            log.warning("ESP32 DISABLED (SCOUT_ESP32_PORT=none): drive and slope off")
+            log.warning("ESP32 DISABLED (SCOUT_ESP32_PORT=none): driving off")
             return
         threading.Thread(target=self._run, name="esp32", daemon=True).start()
 
@@ -76,13 +74,13 @@ class Esp32:
                     with self._lock:
                         self._ser = None
                     self.connected = False
-                    self.imu = None
+                    self.drive = None
                     ports.in_use.discard(device)
-                    log.error("ESP32 DISCONNECTED: drive and slope off until it is back")
+                    log.error("ESP32 DISCONNECTED: driving off until it is back")
             else:
                 self._misses += 1
                 if self._misses == 1 or self._misses % 20 == 0:
-                    log.error("ESP32 NOT FOUND: drive and slope disabled. USB serial ports seen: %s. "
+                    log.error("ESP32 NOT FOUND: driving disabled. USB serial ports seen: %s. "
                               "Set SCOUT_ESP32_PORT=/dev/... to force one.", ports.seen())
             time.sleep(3)
 
@@ -108,11 +106,10 @@ class Esp32:
                     continue
                 if not isinstance(obj, dict):
                     continue
-                if "pitch" in obj:
-                    self.imu = Imu(float(obj.get("pitch", 0)), float(obj.get("roll", 0)), float(obj.get("yaw", 0)),
-                                   float(obj.get("v", 0)), float(obj.get("w", 0)), bool(obj.get("imu", True)))
+                if "v" in obj:
+                    self.drive = Drive(float(obj.get("v", 0)), float(obj.get("w", 0)))
                 elif "hello" in obj:
                     self.fw = str(obj.get("fw", "?"))
-                    log.info("ESP32 hello: fw %s imu %s", self.fw, obj.get("imu"))
+                    log.info("ESP32 hello: fw %s", self.fw)
                 else:
                     log.info("ESP32: %s", line.decode("utf-8", "replace").strip())

@@ -1,6 +1,9 @@
-"""RPLIDAR reader thread: keeps the latest five-angle sweep, and the latest whole
-rotation with its gaps (PROTOCOL.md section 5, telem.sweep and the scan frame).
-Reconnects forever."""
+"""RPLIDAR reader thread: keeps the latest full 360-entry scan and the openings found in it
+(PROTOCOL.md section 6). Reconnects forever.
+
+The gap finder is vendored in `gaps.py`. It matters here because it is the only thing that can tell
+an opening from a surface that does not reflect: both come back as nothing at all. Every gap carries
+that distinction as `evidence`, and the audit refuses to measure anything but `see_through`."""
 import logging
 import threading
 import time
@@ -13,57 +16,41 @@ from . import ports, rplidar
 
 log = logging.getLogger("scout.lidar")
 
-ANGLES = (-90, -45, 0, 45, 90)   # ours: 0 ahead, negative right, positive left
-WINDOW_DEG = 5.0
-GAP_EVERY = 5                    # find gaps every Nth rotation: about 2 Hz, which is the scan frame rate
-SCAN_MIN_GAP_MM = 150.0          # below the 1:4 course's 190 mm gate, so the demo gate shows up
-SCAN_MAX_GAP_MM = 3000.0         # wider than any doorway: that is open space, not an opening
+GAP_EVERY = 3                   # find gaps every Nth rotation: about 2 Hz, and it is the costly part
+MIN_GAP_MM = 150.0              # below this is sensor noise rather than an opening
+
+def scan_from_rotation(rotation, offset_deg=0.0):
+    """rotation: [(lidar_angle_deg, dist_mm), ...] for one turn, RPLIDAR convention (clockwise,
+    0 = its front). Returns a list of exactly 360 integers, index i = millimetres at bearing i
+    degrees counter-clockwise of straight ahead, 0 for no return (PROTOCOL.md section 6).
+
+    Each bin keeps the second-smallest return that fell in it, so a single stray short sample --
+    dust, a reflection off a chair leg -- cannot invent an obstacle. Bins with one sample keep it."""
+    bins = [[] for _ in range(360)]
+    for ang, d in rotation:
+        if d <= 0:
+            continue
+        # RPLIDAR angles grow clockwise and ours grow to the left, so the sign flips
+        i = int(round((offset_deg - ang) % 360.0)) % 360
+        bins[i].append(d)
+    out = [0] * 360
+    for i, ds in enumerate(bins):
+        if not ds:
+            continue
+        ds.sort()
+        out[i] = int(round(ds[1] if len(ds) > 1 else ds[0]))
+    return out
 
 
-def _angdiff(a, b):
-    d = abs(a - b) % 360.0
-    return min(d, 360.0 - d)
-
-
-def sweep_from_rotation(rotation, offset_deg=0.0):
-    """rotation: [(lidar_angle_deg, dist_mm), ...] for one turn, RPLIDAR convention (clockwise, 0 = its front).
-    Returns ((a, mm), ...) for ANGLES: the second-smallest return within ±WINDOW_DEG of each bearing
-    (one stray sample cannot fake a wall), 0 when there is no return."""
-    out = []
-    for a in ANGLES:
-        target = (offset_deg - a) % 360.0          # RPLIDAR angles grow clockwise; ours grow to the left
-        ds = sorted(d for ang, d in rotation if d > 0 and _angdiff(ang, target) <= WINDOW_DEG)
-        mm = ds[1] if len(ds) > 1 else (ds[0] if ds else 0)
-        out.append((a, int(round(mm))))
-    return tuple(out)
-
-
-def to_scout_angle(lidar_angle_deg, offset_deg=0.0):
-    """Lidar bearing to Scout's convention: 0 ahead, negative right, in (-180, 180]."""
-    a = (offset_deg - lidar_angle_deg) % 360.0
-    return a - 360.0 if a > 180.0 else a
-
-
-def unwrap(a):
-    """[0, 360) back to Scout's (-180, 180]."""
-    return round(a - 360.0 if a > 180.0 else a, 1)
-
-
-def gaps_in_scout_frame(pts):
-    """pts are already Scout angles. find_gaps works on a [0, 360) ring, so shift in and back."""
-    found = gapfinder.find_gaps([(a % 360.0, mm) for a, mm in pts], min_gap_mm=SCAN_MIN_GAP_MM)
-    return [{"a0": unwrap(g.start_angle_deg), "mm0": int(round(g.start_mm)),
-             "a1": unwrap(g.end_angle_deg), "mm1": int(round(g.end_mm)),
-             "width_mm": int(round(g.width_mm)), "span_deg": round(g.span_deg, 1),
-             "evidence": g.evidence}
-            for g in found if g.width_mm <= SCAN_MAX_GAP_MM]
-
-
-def rotation_in_scout_frame(rotation, offset_deg=0.0):
-    """One rotation as [(scout_angle_deg, mm), ...] sorted by angle, no-returns kept."""
-    pts = [(round(to_scout_angle(a, offset_deg), 1), int(round(d))) for a, d in rotation]
-    pts.sort(key=lambda p: p[0])
-    return pts
+def gap_to_wire(g):
+    """One gap as the protocol carries it (section 6). Field names match v1.2's scan frame, so
+    anything already drawing gaps keeps working."""
+    a = g.mid_angle_deg
+    return {"a0": round(g.start_angle_deg, 1), "mm0": int(g.start_mm),
+            "a1": round(g.end_angle_deg, 1), "mm1": int(g.end_mm),
+            "width_mm": int(g.width_mm), "span_deg": round(g.span_deg, 1),
+            "mid_deg": round(a - 360.0 if a > 180.0 else a, 1),
+            "evidence": g.evidence}
 
 
 class Lidar:
@@ -75,10 +62,10 @@ class Lidar:
         self.port = None
         self.info = ""
         self.connected = False
-        self.sweep = ()                 # latest ((a, mm), ...) or () when absent
-        self.scan = None                # latest {"pts", "gaps", "hz", "mode"} or None
-        self.scan_mode = "none"
-        self.hz = 0.0
+        self.scan = []                  # latest 360-entry scan, or [] when absent
+        self.gaps = []                  # openings in that scan, each with its evidence
+        self.hz = 0.0                   # measured rotation rate
+        self.scan_mode = "none"         # express or standard, whichever the board negotiated
         self._misses = 0
 
     def start(self):
@@ -103,8 +90,9 @@ class Lidar:
                     log.warning("LIDAR %s: %s", device, e)
                 finally:
                     self.connected = False
-                    self.sweep = ()
-                    self.scan = None
+                    self.scan = []
+                    self.gaps = []
+                    self.gaps = []
                     ports.in_use.discard(device)
                     log.error("LIDAR DISCONNECTED: width off until it is back")
             else:
@@ -128,18 +116,18 @@ class Lidar:
             log.info("LIDAR connected on %s (%s)", device, self.info)
             n, last = 0, time.monotonic()
             for rotation in rplidar.rotations(lidar.nodes()):
-                self.sweep = sweep_from_rotation(rotation, self.offset_deg)
+                scan = scan_from_rotation(rotation, self.offset_deg)
+                self.scan = scan
                 now = time.monotonic()
-                dt = now - last
-                last = now
+                dt, last = now - last, now
                 if 0.02 < dt < 2.0:
                     self.hz = round(1.0 / dt, 1) if self.hz == 0 else round(0.7 * self.hz + 0.3 / dt, 1)
                 self.scan_mode = lidar.scan_mode
                 n += 1
                 if n % GAP_EVERY == 0:
-                    pts = rotation_in_scout_frame(rotation, self.offset_deg)
-                    self.scan = {"pts": pts, "hz": self.hz, "mode": lidar.scan_mode,
-                                 "gaps": gaps_in_scout_frame(pts)}
+                    # the finder wants (bearing, mm) pairs; the scan is already in Scout's frame
+                    pts = [(float(i), float(mm)) for i, mm in enumerate(scan)]
+                    self.gaps = [gap_to_wire(g) for g in gapfinder.find_gaps(pts, MIN_GAP_MM)]
         finally:
             try:
                 lidar.close()

@@ -1,4 +1,25 @@
-"""Slope stop-and-measure and width pinch detection (PROTOCOL.md section 5). Pure logic, no I/O."""
+"""Clearance: how wide the way through is, and whether a wheelchair fits (PROTOCOL.md section 6).
+
+Width is the one thing Scout judges against a building-code limit, so it is measured directly
+rather than inferred. Take a thin slice straight across Scout's path, through where it is standing.
+Of the returns falling in that slice, the closest on the left and the closest on the right are the
+two things a wheelchair would have to pass between, and their separation is the clearance.
+
+Neither side has to be a wall, so this catches a bin beside a doorway as readily as a doorway --
+which is why v1's fixed pair of beams at plus and minus ninety degrees was not enough. Against the
+simulated course it reads a 510 mm slot as 504 mm.
+
+Scout reports no clearance at all in an open room. That is deliberate: two walls four metres apart
+are not a gap anyone has to fit through, and calling them one would bury the real pinch points.
+
+It also reports nothing when a side of the slice is mostly no-returns. A lidar gets nothing back
+from glass, gloss black and some dark carpet, exactly as if the space were empty, so a near surface
+that does not reflect is silently skipped and the next surface behind it is measured instead. The
+gap then comes out **too wide**, which is the one error direction that matters here: it turns a
+doorway a wheelchair cannot use into a pass. Refusing to measure a sparse sector is the safe
+failure. This is the same distinction `gaps.py` draws as `unverified`, applied to the abeam slice.
+"""
+import math
 
 # A gap from the scan frame only counts towards the width audit when Scout could
 # plausibly drive through it: roughly ahead, and close by. Without this a narrow
@@ -37,85 +58,141 @@ def audit_width_from_gaps(gaps, threshold_mm):
     return best
 
 
+SECTOR_DEG = 45          # how far either side of straight-abeam to look, for angled walls
+SLICE_MM = 300           # a return must be within this much of abeam to bound the gap
+MAX_SIDE_MM = 2500       # a return further to the side than this is not what Scout is passing
+FRONT_DEG = 25           # the cone Scout calls "ahead"
+FRONT_CLEAR_MM = 600     # the way ahead must be at least this open for a gap to be a passage
+PINCH_OPEN = 1.4         # a gap under this multiple of the limit opens a pinch
+MIN_PINCH_SAMPLES = 4    # a pinch seen on fewer scans than this was a glimpse, not a doorway
+DROPOUT_DEG = 15         # the window straight out from Scout used to judge how well a side is seen
+MAX_DROPOUT = 0.6        # a side this empty may be hiding a nearer surface that did not reflect
+
+
+def clearance(scan, sector_deg=SECTOR_DEG):
+    """The width of the opening Scout is passing through, from one 360-entry scan.
+
+    Measured across a thin slice perpendicular to the direction of travel: of the returns that lie
+    beside Scout, take the one closest to its centre line on the left and the one closest on the
+    right. Their sum is the gap.
+
+    Measuring perpendicular matters. The obvious version -- nearest return with a positive sideways
+    offset, nearest with a negative one, anywhere ahead -- makes a wall straight in front count as
+    both bounds at once, because a point dead ahead has a sideways offset of nearly zero. That
+    reports a doorway a few millimetres wide every time Scout faces a wall. A return ahead is an
+    obstruction, not a narrow gap, and the sectors here leave it out by construction.
+
+    Returns (width_mm, left_point, right_point) in the robot frame, or (0, None, None) when the
+    path is not bounded on both sides -- an open room has no clearance to report.
+    """
+    if not scan or len(scan) != 360:
+        return 0, None, None
+
+    # A passage is something Scout could drive through. Facing into a corner, the wall it has been
+    # following and the wall across the corner both land in the slice and read as a narrow doorway;
+    # every corner of every room would fail. If Scout cannot go forward, it is not passing through
+    # anything, so there is no clearance to report.
+    for d in range(-FRONT_DEG, FRONT_DEG + 1):
+        mm = scan[d % 360]
+        if 0 < mm < FRONT_CLEAR_MM:
+            return 0, None, None
+
+    def side_of(centre):
+        # Judge how well this side is seen only from the bearings straight out from Scout. Any
+        # surface bounding the gap, near or far, has to answer there. Counting no-returns across
+        # the whole sector instead would condemn a perfectly good distant wall, because the wide
+        # bearings only ever catch something when the surface is close.
+        seen = dropouts = 0
+        for d in range(centre - DROPOUT_DEG, centre + DROPOUT_DEG + 1):
+            seen += 1
+            if scan[d % 360] <= 0:
+                dropouts += 1
+        if seen and dropouts / seen > MAX_DROPOUT:
+            return None          # too little came back to trust the nearest thing on this side
+
+        best = None
+        for d in range(centre - sector_deg, centre + sector_deg + 1):
+            mm = scan[d % 360]
+            if mm <= 0:
+                continue
+            a = math.radians(d % 360)
+            along, off = mm * math.cos(a), abs(mm * math.sin(a))
+            # Beside Scout, not merely off to one side. A point well behind or well ahead still has
+            # a sideways offset, so without this the wall Scout has just driven away from -- a few
+            # hundred millimetres back and off to the left -- becomes the left-hand bound of the
+            # doorway it is currently in, and the gap reads far narrower than it is.
+            if abs(along) > SLICE_MM or off > MAX_SIDE_MM:
+                continue
+            if best is None or off < best[0]:
+                best = (off, (along, mm * math.sin(a)))
+        return best
+
+    left, right = side_of(90), side_of(270)
+    if left is None or right is None:
+        return 0, None, None
+    return int(round(left[0] + right[0])), left[1], right[1]
+
+
 class Audit:
+    """Turns a stream of clearance readings into one pass/fail per pinch point."""
+
     def __init__(self, cfg):
-        self.cfg = cfg                  # the live runtime config dict, shared with the server
-        self.measuring = False
-        self._slope = "armed"           # armed -> settle -> average -> cooldown -> armed
-        self._t_above = None
-        self._t_stage = 0.0
-        self._sum = 0.0
-        self._n = 0
-        self._t_below = None
-        self._pinch = None              # None, or {"min": mm, "t0": s} while a pinch point is open
-        self._gap_mm = 0                # last qualifying gap width, held for GAP_LATCH_S
-        self._gap_at = None             # when that gap was last actually seen
+        self.cfg = cfg               # the live runtime config dict, shared with the server
+        self.measuring = False       # set by the server while the camera is looking, not here
+        self._pinch = None           # {"min", "t0", "at", "n"} while a pinch point is open
+        self._gap_at = None          # when a qualifying gap was last seen ahead
 
-    def step(self, now, pitch, width_mm, gaps=None):
-        """now in seconds. pitch in degrees or None when there is no IMU. width_mm 0 when invalid.
-        gaps is the latest scan frame's gap list, or None when there is no lidar.
-        Returns (events, stop_motors). Events lack t, seq and space; the server fills those."""
-        events = []
-        stop = False
+    def reset(self):
+        self._pinch = None
+        self._gap_at = None
 
-        # ---- slope: one event per ramp ----
-        if pitch is None:
-            if self._slope != "armed":
-                self._slope, self.measuring = "armed", False
-        elif self._slope == "armed":
-            if abs(pitch) > 2.0:
-                self._t_above = self._t_above if self._t_above is not None else now
-                if now - self._t_above >= 0.5:
-                    self._slope, self._t_stage, self.measuring, stop = "settle", now, True, True
-            else:
-                self._t_above = None
-        elif self._slope == "settle":
-            if now - self._t_stage >= 0.4:
-                self._slope, self._t_stage, self._sum, self._n = "average", now, 0.0, 0
-        elif self._slope == "average":
-            self._sum += pitch
-            self._n += 1
-            if now - self._t_stage >= 1.0:
-                value = round(abs(self._sum / max(self._n, 1)), 1)
-                limit = float(self.cfg["slope_limit_deg"])
-                events.append({"kind": "slope_fail" if value > limit else "slope_pass",
-                               "value": value, "unit": "deg", "limit": limit, "scale": 1.0})
-                self._slope, self.measuring, self._t_below, self._t_above = "cooldown", False, None, None
-        elif self._slope == "cooldown":
-            if abs(pitch) < 1.0:
-                self._t_below = self._t_below if self._t_below is not None else now
-                if now - self._t_below >= 1.0:
-                    self._slope = "armed"
-            else:
-                self._t_below = None
+    def step(self, now, width_mm, place, gaps=()):
+        """Feed one clearance reading and the gaps seen in the same scan.
 
-        # ---- width: one event per pinch point, from two sources ----
-        # width_mm is the corridor at Scout's own position. A see_through gap is a
-        # doorway it can see ahead. Either can open the pinch and both feed the
-        # minimum, so a gate that is seen and then driven through is one event.
-        limit = float(self.cfg["width_limit_mm"]) * float(self.cfg["scale"])
-        threshold = 1.4 * limit
-        # Scans arrive at 2 Hz and a gap's evidence can change between rotations, so a
-        # gap is held briefly after it was last seen. Without that, one flickering
-        # doorway closes and reopens the pinch and fires an event every couple of
-        # seconds. A gap that really goes away still clears within GAP_LATCH_S.
-        seen = audit_width_from_gaps(gaps, threshold)
-        if seen:
-            self._gap_mm, self._gap_at = seen, now
-        elif self._gap_at is not None and now - self._gap_at >= GAP_LATCH_S:
-            self._gap_mm, self._gap_at = 0, None
-        gap_mm = self._gap_mm
-        narrow = [w for w in (width_mm, gap_mm) if 0 < w < threshold]
+        Two sources, one pinch. `width_mm` is the opening Scout is inside right now; a
+        `see_through` gap ahead is one it can see but has not reached. Taking both means a doorway
+        Scout looks at and then drives through is a single event carrying the narrower of the two,
+        rather than one event for looking and another for arriving.
+
+        `place` maps a robot-frame point to the room frame, or is None when there is no pose.
+        Returns a list of events (0 or 1)."""
+        limit = float(self.cfg["width_limit_mm"])
+        ahead = audit_width_from_gaps(gaps, PINCH_OPEN * limit)
+        if ahead:
+            self._gap_at = now
+            if width_mm == 0 or ahead < width_mm:
+                width_mm = ahead
+        # A gap is found afresh in every rotation, and one rotation in a few will miss it as Scout
+        # turns or a sample drops. Treating that single blank scan as "the doorway is gone" would
+        # close the pinch and fire a second event for the same doorway, so a gap stays counted as
+        # seen for a moment after its last sighting.
+        gap_recent = self._gap_at is not None and now - self._gap_at < GAP_LATCH_S
         if self._pinch is None:
-            if narrow:
-                self._pinch = {"min": min(narrow), "t0": now}
-        else:
-            if narrow:
-                self._pinch["min"] = min(self._pinch["min"], *narrow)
-            if not narrow or now - self._pinch["t0"] >= PINCH_MAX_S:
-                value = self._pinch["min"]
-                events.append({"kind": "width_fail" if value < limit else "width_pass",
-                               "value": value, "unit": "mm", "limit": round(limit, 1), "scale": float(self.cfg["scale"])})
-                self._pinch = None
+            if 0 < width_mm < PINCH_OPEN * limit:
+                self._pinch = {"min": width_mm, "t0": now, "at": place, "n": 1}
+            return []
 
-        return events, stop
+        if 0 < width_mm:
+            self._pinch["n"] += 1
+            if width_mm < self._pinch["min"]:
+                self._pinch["min"] = width_mm
+                self._pinch["at"] = place    # remember where the narrowest point was, not where it ended
+        open_enough = (width_mm == 0 or width_mm >= PINCH_OPEN * limit) and not gap_recent
+        if not open_enough and now - self._pinch["t0"] < PINCH_MAX_S:
+            return []
+
+        value, at, n = self._pinch["min"], self._pinch["at"], self._pinch["n"]
+        self._pinch = None
+        self._gap_at = None
+        if n < MIN_PINCH_SAMPLES:
+            # One or two scans of a narrow reading is Scout clipping a corner or a stray return,
+            # not a doorway it went through. Saying nothing beats crying wolf at every corner.
+            return []
+        ev = {"kind": "width_fail" if value < limit else "width_pass",
+              "value": int(value), "unit": "mm", "limit": round(limit, 1),
+              "between": at[2] if at else "unknown"}
+        # The width itself is a real measurement whether or not Scout knows where it is standing,
+        # so the verdict is still reported -- just without a position to pin it to on the map.
+        if at:
+            ev["x_mm"], ev["y_mm"] = at[0], at[1]
+        return [ev]

@@ -2,6 +2,11 @@
 """Checks for scout/audit.py. Plain asserts, no test framework (see CLAUDE.md rule 6).
 
     cd pi && .venv/bin/python tools/check_audit.py
+
+The gap cases below are unchanged from v1.3: a `see_through` gap ahead may still open a width pinch,
+and `unverified` and `step` gaps still must not. v2 only changed where the other input comes from --
+`clearance()` measured across Scout's path, rather than two fixed beams -- and removed the scale, so
+these run against a plain 215 mm limit.
 """
 import os
 import sys
@@ -10,8 +15,8 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from scout.audit import Audit  # noqa: E402
 
-CFG = {"slope_limit_deg": 4.76, "width_limit_mm": 860, "scale": 0.25, "width_offset_mm": 0}
-LIMIT = 860 * 0.25          # 215 mm on the 1:4 course
+CFG = {"width_limit_mm": 215.0}     # the numbers below were written against a 215 mm limit
+LIMIT = CFG["width_limit_mm"]
 checks = 0
 
 
@@ -28,7 +33,7 @@ def run(steps):
         n = max(1, int(secs * 10))
         for _ in range(n):
             t += 0.1
-            events, _stop = a.step(t, 0.0, width_mm, gaps)
+            events = a.step(t, width_mm, None, gaps)
             out.extend(events)
     return out
 

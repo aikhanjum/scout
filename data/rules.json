@@ -1,13 +1,9 @@
 {
-  "table_scale": 0.25,
   "rules": [
-    {"id":"ramp_slope","kind":"slope","limit":4.76,"unit":"deg","cmp":"max",
-     "text":"Ramps on an accessible route may be no steeper than 1 in 12 (4.76 degrees).",
-     "source":"Ontario Building Code 3.8.3.4.(1)(b)",
-     "fix":"Rebuild the ramp at 1 in 12 or shallower, or add a lift."},
     {"id":"door_clear_width","kind":"width","limit":860,"unit":"mm","cmp":"min",
      "text":"Doorways on an accessible route need at least 860 mm of clear opening. The same number applies to aisles.",
      "source":"Ontario Building Code 3.8.3.3",
      "fix":"Widen the opening, rehang the door, or move the obstruction."}
-  ]
+  ],
+  "labels": ["ramp","door","chair","table","box","bin","cable","wall","unknown"]
 }

@@ -10,8 +10,9 @@ __pycache__/
 .env
 .DS_Store
 
-# recorded runs and 3D scans are outputs. The samples stay in git; whitelist a demo run or model with a ! line.
+# recorded runs are outputs. The sample stays in git; whitelist a demo run with a ! line.
 data/runs/*.ndjson
-!data/runs/table-course.ndjson
-data/models/*.glb
-!data/models/sample.glb
+!data/runs/room-scan.ndjson
+
+# playwright screenshots
+.playwright-mcp/

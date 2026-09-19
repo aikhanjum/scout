@@ -1,4 +1,4 @@
-// Pretends to be Scout. Serves protocol v1 (docs/PROTOCOL.md) from an NDJSON run file, on a loop,
+// Pretends to be Scout. Serves protocol v2 (docs/PROTOCOL.md) from an NDJSON run file, on a loop,
 // and logs every command it receives. Usage: node server.js [run.ndjson]   (PORT=8080 by default)
 import http from 'node:http';
 import fs from 'node:fs';
@@ -7,21 +7,22 @@ import { fileURLToPath } from 'node:url';
 import { WebSocket, WebSocketServer } from 'ws';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
-const file = process.argv[2] ?? path.join(here, '../../data/runs/table-course.ndjson');
+const file = process.argv[2] ?? path.join(here, '../../data/runs/room-scan.ndjson');
 const port = Number(process.env.PORT ?? 8080);
-const FW = 'fake-0.1.0';
+const FW = 'fake-0.2.0';
 const log = (...a) => console.log(new Date().toISOString().slice(11, 23), ...a);
 
 const lines = fs.readFileSync(file, 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l));
 const header = lines.find((l) => l.type === 'run') ?? {};
-const frames = lines.filter((l) => l.type === 'telem' || l.type === 'event' || l.type === 'scan');
+const frames = lines.filter((l) => l.type === 'telem' || l.type === 'event' || l.type === 'map');
 if (!frames.length) throw new Error(`no frames in ${file}`);
 
-// --- state the real firmware keeps ---
+// --- state the real service keeps ---
 const boot = Date.now();
-const config = { slope_limit_deg: 4.76, width_limit_mm: 860, scale: 1.0, width_offset_mm: 45, ...header.config };
+const config = { width_limit_mm: 860, robot_width_mm: 260, wall_target_mm: 300, cruise: 0.4, ...header.config };
 let run = { active: false, space: '' };
 let lastTelem = frames.find((f) => f.type === 'telem') ?? {};
+let lastMap = frames.find((f) => f.type === 'map') ?? null;
 
 // --- playback: broadcast the file with its original timing, forever ---
 const clients = new Set();
@@ -33,6 +34,7 @@ function tick() {
   const out = { ...f, t: f.t + loop * span }; // t and seq keep rising across loops
   if (f.type === 'event') out.seq = f.seq + loop * eventCount;
   if (f.type === 'telem') lastTelem = out;
+  if (f.type === 'map') lastMap = out;
   const s = JSON.stringify(out);
   for (const c of clients) if (c.readyState === WebSocket.OPEN) c.send(s);
   i += 1;
@@ -46,8 +48,9 @@ let driveCount = 0, lastDrive = null, watchdog = null;
 const SHORT = {
   forward: { cmd: 'drive', v: 0.5, w: 0 }, back: { cmd: 'drive', v: -0.5, w: 0 },
   left: { cmd: 'drive', v: 0, w: 0.5 }, right: { cmd: 'drive', v: 0, w: -0.5 },
-  stop: { cmd: 'stop' }, beep: { cmd: 'beep' },
+  stop: { cmd: 'stop' }, beep: { cmd: 'beep' }, roam: { cmd: 'mode', mode: 'wall_follow' },
 };
+const MODES = ['idle', 'teleop', 'wall_follow'];
 function command(c) {
   if (!c || typeof c.cmd !== 'string') return { ok: false, err: 'no cmd' };
   switch (c.cmd) {
@@ -61,7 +64,7 @@ function command(c) {
       log('cmd stop (E-STOP), mode idle');
       return { ok: true };
     case 'mode':
-      if (c.mode !== 'teleop' && c.mode !== 'idle') return { ok: false, err: `unknown mode ${c.mode}` };
+      if (!MODES.includes(c.mode)) return { ok: false, err: `unknown mode ${c.mode}` };
       log('cmd', JSON.stringify(c));
       return { ok: true };
     case 'run':
@@ -70,11 +73,15 @@ function command(c) {
       else return { ok: false, err: `unknown action ${c.action}` };
       log('cmd', JSON.stringify(c));
       return { ok: true };
+    case 'map':
+      if (c.action !== 'clear') return { ok: false, err: `unknown action ${c.action}` };
+      log('cmd map clear (playback keeps rolling)');
+      return { ok: true };
     case 'config':
-      for (const k of ['slope_limit_deg', 'width_limit_mm', 'scale', 'width_offset_mm']) if (typeof c[k] === 'number') config[k] = c[k];
+      for (const k of ['width_limit_mm', 'robot_width_mm', 'wall_target_mm', 'cruise']) if (typeof c[k] === 'number') config[k] = c[k];
       log('cmd config ->', JSON.stringify(config));
       return { ok: true };
-    case 'mark': case 'zero': case 'beep':
+    case 'mark': case 'beep':
       log('cmd', JSON.stringify(c));
       return { ok: true };
     default:
@@ -87,8 +94,9 @@ setInterval(() => { // drive arrives at 10 Hz, so summarise it once a second
 }, 1000);
 
 const status = () => ({
-  proto: 1, fw: FW, mode: lastTelem.mode ?? 'idle', measuring: !!lastTelem.measuring,
-  run, config, uptime_ms: Date.now() - boot, heap: 181000, ip: '127.0.0.1',
+  proto: 2, fw: FW, mode: lastTelem.mode ?? 'idle', measuring: !!lastTelem.measuring,
+  run, devices: { esp32: true, lidar: true, camera: false }, config,
+  uptime_ms: Date.now() - boot, ip: '127.0.0.1',
 });
 
 // --- HTTP ---
@@ -98,6 +106,9 @@ const server = http.createServer(async (req, res) => {
   const json = (code, body) => { res.writeHead(code, { ...CORS, 'Content-Type': 'application/json' }); res.end(JSON.stringify(body)); };
   if (req.method === 'OPTIONS') { res.writeHead(204, CORS); return res.end(); }
   if (url.pathname === '/status') return json(200, status());
+  if (url.pathname === '/map') return lastMap ? json(200, lastMap) : json(404, { ok: false, err: 'no map yet' });
+  // the fake has no camera, so every photo id is a miss. The dashboard must cope (PROTOCOL.md section 6).
+  if (url.pathname.startsWith('/photo/')) return json(404, { ok: false, err: 'no photo' });
   if (url.pathname === '/cmd' && req.method === 'GET') {
     const c = SHORT[url.searchParams.get('c')];
     return c ? json(200, command(c)) : json(400, { ok: false, err: 'unknown c' });
@@ -121,6 +132,7 @@ const wss = new WebSocketServer({ server, path: '/ws' });
 wss.on('connection', (ws) => {
   clients.add(ws);
   log(`ws client connected (${clients.size})`);
+  if (lastMap) ws.send(JSON.stringify(lastMap));   // one map on connect, so the view is never blank
   ws.on('message', (m) => { try { command(JSON.parse(m)); } catch { log('ws: bad json'); } });
   ws.on('close', () => { clients.delete(ws); log(`ws client left (${clients.size})`); });
 });

@@ -1,0 +1,17 @@
+# dependencies and build output
+node_modules/
+dist/
+.pio/
+.venv/
+__pycache__/
+*.pyc
+
+# secrets and OS noise
+.env
+.DS_Store
+
+# recorded runs and 3D scans are outputs. The samples stay in git; whitelist a demo run or model with a ! line.
+data/runs/*.ndjson
+!data/runs/table-course.ndjson
+data/models/*.glb
+!data/models/sample.glb

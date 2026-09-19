@@ -1,0 +1,12 @@
+{
+  "name": "scout",
+  "private": true,
+  "scripts": {
+    "setup": "npm --prefix tools/fake-scout install && npm --prefix mission-control install",
+    "start": "npm run fake",
+    "fake": "node tools/fake-scout/server.js",
+    "gen": "node tools/fake-scout/gen.js",
+    "dash": "cd mission-control && npm run dev",
+    "flash": "cd firmware && pio run -t upload && pio device monitor -b 115200"
+  }
+}

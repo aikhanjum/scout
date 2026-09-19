@@ -31,6 +31,7 @@ Port 8080 busy? `PORT=8081 npm run fake`, then type `ws://localhost:8081/ws` in 
 | Run the brain on the Mac or the Pi | `pi/README.md` (Python; finds the ESP32 and the lidar on USB by itself) |
 | Wire the robot | `hardware/PINMAP.md` |
 | Add rules, labels, replay files | `data/README.md` |
+| Upload runs to Tiger Data, refresh "Room over time" | `tools/upload-run/README.md` |
 | See what was cut and why | `docs/LATER.md` |
 
 ```

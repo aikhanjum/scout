@@ -48,6 +48,11 @@ python pi/tools/make_clip_labels.py             # on a LAPTOP: build pi/models/ 
 npm run flash                                  # or: cd firmware && pio run -t upload && pio device monitor -b 115200
 cd firmware && pio run                         # compile only
 
+# Tiger Data (sponsor track): laptop-only, after a run. Needs TIGER_URL in the repo-root .env (gitignored, never printed)
+npm run setup:tiger                            # once
+npm run upload -- upload data/runs/<run>.ndjson   # hypertables + columnstore, prints the compression ratio, refreshes data/history.json
+npm run upload -- status
+
 # data
 data/runs/*.ndjson      run logs and replay files (runs/index.json lists them for the dashboard)
 data/rules.json         the width limit, its rule text and source, and the camera's label set
@@ -87,4 +92,5 @@ data/rules.json         the width limit, its rule text and source, and the camer
 - `pose.py` and `mapping.py` are the load-bearing algorithms and both have real failure modes documented in their docstrings. Test changes against a recorded run before the robot: `data/runs/room-scan.ndjson` carries 660 scans with ground-truth poses in every frame.
 - Firmware: `platform = espressif32@^6.9` (Arduino core 2.0.x, `ledcSetup`/`ledcAttachPin`), no libraries. Nothing in `loop()` blocks except the `T` self-test. Pins and sign flips live in `firmware/src/config.h` and mirror `hardware/PINMAP.md`.
 - Dashboard: Vite + React + TypeScript, `zustand`, and a plain 2D canvas for the map. No three.js, no GLB. Chrome only. Vite `publicDir` is `../data`.
+- Tiger Data: only `tools/upload-run` touches the database, never the Pi service or the dashboard. The dashboard reads `data/history.json`. Simulated runs (fw `fake*`) are refused unless `--simulated` and are tagged so they never show by default.
 - Keep code minimal and plain. One file that reads top to bottom beats a clever abstraction.

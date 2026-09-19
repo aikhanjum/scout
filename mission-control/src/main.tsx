@@ -3,6 +3,10 @@ import { createRoot } from 'react-dom/client';
 import { App } from './App';
 import { useStore } from './store';
 import { connect } from './scout';
+import '@fontsource-variable/ibm-plex-sans';
+import '@fontsource/ibm-plex-mono/400.css';
+import '@fontsource/ibm-plex-mono/500.css';
+import '@fontsource/ibm-plex-mono/600.css';
 import './style.css';
 
 // A render error must never blank the big screen mid-demo.
@@ -10,7 +14,7 @@ class Boundary extends Component<{ children: ReactNode }, { error: string | null
   state = { error: null as string | null };
   static getDerivedStateFromError(e: unknown) { return { error: String(e) }; }
   render() {
-    if (this.state.error) return <div className="crash">Dashboard error: {this.state.error} <button onClick={() => location.reload()}>Reload</button></div>;
+    if (this.state.error) return <div className="crash" role="alert"><span>Dashboard error: {this.state.error}</span> <button onClick={() => location.reload()}>Reload</button></div>;
     return this.props.children;
   }
 }

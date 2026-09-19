@@ -21,8 +21,8 @@ export function connect(source: Source) {
   generation += 1;
   clearTimeout(watchdog); clearTimeout(reconnectTimer); clearTimeout(replayTimer);
   if (ws) { ws.onclose = null; ws.onmessage = null; ws.close(); ws = null; }
-  store().set({ source, link: 'down', detail: '', telem: null, map: null, events: [], baseUrl: '' });
-  if (source.kind === 'live') openSocket(source.url, generation);
+  store().set({ source, link: 'down', detail: '', telem: null, map: null, trail: [], events: [], baseUrl: '' });
+  if (source.kind === 'live') openSocket(source.url, generation, true);
   else void playFile(source, generation);
 }
 
@@ -62,7 +62,8 @@ function httpOrigin(wsUrl: string) {
   return u.toString().replace(/\/$/, '');
 }
 
-function openSocket(url: string, gen: number) {
+// fresh: this is a new connect(), not the reconnect loop after a dropped link.
+function openSocket(url: string, gen: number, fresh = false) {
   let s: WebSocket;
   try { s = new WebSocket(url); } catch { store().set({ detail: 'bad URL' }); return; }
   ws = s;
@@ -71,6 +72,7 @@ function openSocket(url: string, gen: number) {
     if (gen !== generation) return;
     store().set({ detail: 'connected', baseUrl: httpOrigin(url) });
     sendConfig();
+    if (fresh) send({ cmd: 'map', action: 'clear' });   // a page load or a source switch starts the map over
     void fetchStatus(url, gen);
   };
   s.onmessage = (e) => { if (gen !== generation) return; try { handleFrame(JSON.parse(e.data)); } catch { /* not a frame, ignore */ } };
@@ -103,6 +105,7 @@ function linkDown() { store().set({ link: 'down' }); }
 function handleFrame(f: Frame) {
   if (f.type === 'telem') {
     store().set({ telem: f, link: 'up' });
+    if (f.pose) store().addPose(f.x_mm, f.y_mm);
     clearTimeout(watchdog);
     watchdog = window.setTimeout(linkDown, LINK_TIMEOUT_MS);
     rec?.push(f);
@@ -110,6 +113,7 @@ function handleFrame(f: Frame) {
     store().set({ map: f });
     if (rec && f.t - recLastMap >= REC_MAP_MS) { rec.push(f); recLastMap = f.t; }
   } else if (f.type === 'event') {
+    if (f.kind === 'run_start') store().set({ trail: [] });   // a run starts with a cleared map (PROTOCOL.md section 5)
     store().addEvent(f);
     if (store().voice && SPOKEN.has(f.kind)) speak(verdict(f));
     rec?.push(f);

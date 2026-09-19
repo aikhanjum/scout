@@ -12,11 +12,11 @@ Needs Node 20 or newer (`node --version`). Nothing else. No hardware.
 git clone https://github.com/aikhanjum/scout.git
 cd scout
 npm run setup      # installs the fake Scout and the dashboard, about a minute
-npm run fake       # terminal 1: a fake Scout on http://localhost:8080, playing a simulated room survey on a loop
+npm run fake       # terminal 1: a fake Scout on http://localhost:8080, a simulated robot in a simulated room
 npm run dash       # terminal 2: the dashboard on http://localhost:5173
 ```
 
-Open http://localhost:5173 in Chrome. LINK UP turns green and a room draws itself: walls, obstacles with labels, a red marker where a gap is too narrow, and Scout tracking around the edge. Click the page once so spoken verdicts are allowed. WASD drives (the fake's terminal logs every command), space bar is E-STOP.
+Open http://localhost:5173 in Chrome. LINK UP turns green and a room draws itself: walls, obstacles with labels, a red marker where a gap is too narrow, and Scout roaming around the edge until it has closed the loop. Click the page once so spoken verdicts are allowed. Arrow keys or WASD take over and drive the fake robot (it stops to name obstacles and measures every gap it passes, just like the real one), space bar is E-STOP, ROAM sends it back to wall-following.
 
 Port 8080 busy? `PORT=8081 npm run fake`, then type `ws://localhost:8081/ws` in the Live box and press Connect.
 

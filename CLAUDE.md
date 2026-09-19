@@ -31,9 +31,10 @@ Replace each `<name>` with the real owner.
 ## Run commands
 
 ```
-# fake Scout: protocol v2 on :8080, loops data/runs/room-scan.ndjson, logs every command
+# fake Scout: protocol v2 on :8080, a live simulated robot that obeys every command (drive, stop, mode, run, mark, map clear)
 npm run fake                                   # (root) or: cd tools/fake-scout && npm install && npm start
-npm run gen                                    # regenerate the sample run (a little 2D room simulator)
+node tools/fake-scout/server.js data/runs/room-scan.ndjson   # play a recorded run on a loop instead (commands are logged, not obeyed)
+npm run gen                                    # regenerate the sample run from the same simulator (tools/fake-scout/sim.js)
 
 # dashboard: Vite on :5173, serves data/ as static files
 npm run dash                                   # or: cd mission-control && npm install && npm run dev

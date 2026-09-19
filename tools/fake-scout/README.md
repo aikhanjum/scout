@@ -1,14 +1,19 @@
 # fake-scout
 
-Pretends to be Scout. Serves protocol v2 (`docs/PROTOCOL.md`) on port 8080 from an NDJSON run file, on a loop, and logs every command it receives. Nobody waits for hardware.
+Pretends to be Scout. Serves protocol v2 (`docs/PROTOCOL.md`) on port 8080 and logs every command it receives. Nobody waits for hardware.
+
+Two ways to run it:
+
+- **Live** (the default): a simulated robot in a simulated room. It obeys `drive`, `stop`, `mode`, `run`, `mark` and `map clear`, and behaves as the protocol describes: it starts off wall-following, stops to name each obstacle once, measures every pinch it passes and says whether it fails the 860 mm limit, and goes idle once it has closed a loop of the room. Arrow keys on the dashboard take it over.
+- **Playback**: any run file (a real one from `/runs/latest`, or a dashboard recording) on a loop, with its original timing. Commands are logged and ignored.
 
 ## Run
 
 ```
 cd tools/fake-scout
 npm install
-npm start                            # plays ../../data/runs/room-scan.ndjson
-node server.js path/to/run.ndjson    # any run file (a real one from /runs/latest, or a dashboard recording)
+npm start                            # live simulation
+node server.js path/to/run.ndjson    # play a file on a loop instead
 PORT=8081 npm start
 ```
 
@@ -16,23 +21,27 @@ PORT=8081 npm start
 
 ```
 curl localhost:8080/status
-curl 'localhost:8080/cmd?c=forward'
+curl 'localhost:8080/cmd?c=forward'  # the robot drives for 600 ms, then the watchdog stops it
 curl 'localhost:8080/cmd?c=roam'
 curl -s localhost:8080/map | head -c 300
 curl localhost:8080/runs/latest | head -3
 node -e "const w=new WebSocket('ws://localhost:8080/ws');w.onmessage=e=>console.log(e.data)"
 ```
 
+## The room
+
+`sim.js` is the world: a 4210 by 5090 mm room with four obstacles, a 360-ray cast against its geometry for every scan at 10 Hz, and an occupancy grid built from those rays. Occlusion shadows behind each obstacle come out for free, which is what makes it a fair test. The same file drives both modes of the server and the sample run below.
+
+The obstacles: a chair in the wall-following lane, a ramp against the far wall, a bin that leaves a 510 mm slot beside the right wall, and a table that leaves 600 mm beside the left wall. Wall-following round the room names the chair and the ramp, fails the bin slot, the ramp-to-bin passage and the table slot, and never gets close enough to name the bin or the table -- which is exactly what the real robot would do.
+
 ## The sample run
 
-`npm run gen` rewrites `data/runs/room-scan.ndjson` (deterministic). It is a small 2D simulator, not a script: a 4210 by 5090 mm room with four obstacles, a robot wall-following the perimeter, and a real 360-ray cast against the room's geometry for every frame at 10 Hz. Occlusion shadows behind each obstacle come out for free, which is what makes it a fair test.
-
-The route meets a chair blocking the lane, rounds it, meets a ramp against the far wall, rounds that, squeezes through a 510 mm slot beside a bin, and passes a table that is off the lane — so the table is mapped as geometry but never named, which is exactly what the real robot would do.
-
-Every telemetry frame carries the true pose it was taken from, so this file is also the test fixture for `pi/scout/pose.py`. Then it loops, with `t` and `seq` continuing upward so the dashboard never sees a repeat.
+`npm run gen` rewrites `data/runs/room-scan.ndjson` (deterministic): the same room, with the robot following fixed waypoints along the perimeter and the events scripted at the stops. It is the dashboard's replay file and the test fixture for `pi/scout/pose.py`, since every telemetry frame carries the true pose it was taken from.
 
 ## Notes
 
-- Playback ignores commands. Commands are logged. `drive` is summarised once a second, and the 500 ms teleop watchdog is simulated so you can see whether the dashboard's resend loop is right.
-- `/runs/latest` returns the file at full 10 Hz. The real Scout decimates telemetry to 2 Hz and keeps only the newest map frame. Players time frames by `t`, never by rate.
-- The fake has no camera, so `/photo/<id>` is always 404 and every obstacle it replays is labelled from the recording, not classified.
+- `drive` is summarised in the log once a second, and the 600 ms teleop watchdog is real: stop resending and the robot stops. So you can see whether the dashboard's resend loop is right.
+- While the robot is measuring (`measuring: true`, about 1.5 s in front of a new obstacle) `drive` is accepted but the motors stay stopped, as on the real robot.
+- `/runs/latest` is the run buffer in both modes: every event, telemetry at 2 Hz and the newest map frame, since the last `run start`. Players time frames by `t`, never by rate.
+- `map clear` wipes the grid and lets obstacles be named and gaps measured again. The dashboard sends it on every page load, so a refresh starts the map over.
+- There is no real camera, so `/photo/<id>` is always 404. In live mode the labels come from the room's own obstacle table (so `devices.camera` is `true`); in playback they come from the recording.

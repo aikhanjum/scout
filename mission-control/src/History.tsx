@@ -24,17 +24,17 @@ export function History() {
   }, []);
 
   if (!doc || doc.spaces.length === 0) return null;
-  const when = (iso: string) => new Date(iso).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+  const when = (iso: string) => new Date(iso).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false });
   return (
-    <section className="history">
-      <div className="lidar-head">
-        <span className="maptitle">ROOM OVER TIME</span>
-        <span className="muted small">per {doc.bucket} · from Tiger Data · {when(doc.generated_at)}</span>
-        {doc.includes_simulated && <span className="badge">INCLUDES SIMULATED</span>}
+    <section className="sheet history">
+      <div className="sheet-head">
+        <h2>Room over time</h2>
+        <span className="meta">per {doc.bucket}</span>
+        {doc.includes_simulated && <span className="tag warn">Simulated</span>}
       </div>
       {doc.spaces.map((s) => (
         <table key={s.space} className="hist">
-          <thead><tr><th>{s.space}</th><th>runs</th><th>narrowest</th><th>fails</th><th>empty lidar</th></tr></thead>
+          <thead><tr><th>{s.space}</th><th>runs</th><th>min</th><th>fails</th><th>empty</th></tr></thead>
           <tbody>
             {s.buckets.map((b) => (
               <tr key={b.start}>

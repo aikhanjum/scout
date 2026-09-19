@@ -4,31 +4,38 @@ import { send, startRecording, stopRecording } from './scout';
 import { widthRule, type ScoutEvent, type Telem } from './protocol';
 import { detail as eventDetail } from './verdict';
 import { MapView } from './MapView';
-import { LidarView } from './LidarView';
-import { History } from './History';
 
 const SPEED = 0.5, TURN = 0.5;
 type Dir = 'f' | 'b' | 'l' | 'r';
 const KEYS: Record<string, Dir> = { w: 'f', arrowup: 'f', s: 'b', arrowdown: 'b', a: 'l', arrowleft: 'l', d: 'r', arrowright: 'r' };
 
+// What the feed calls each event kind. Only width kinds are verdicts.
+const KIND: Record<string, string> = {
+  width_fail: 'Too narrow', width_pass: 'Clear', ramp: 'Ramp', obstacle: 'Obstacle', mark: 'Mark', run_start: 'Run start', run_stop: 'Run stop',
+};
+
 export function Live() {
-  const { telem, events, link, source, rules, recording } = useStore();
+  const { telem, events, link, source, rules, recording, set } = useStore();
   const [space, setSpace] = useState('Room 1');
-  const [mark, setMark] = useState('');
   const drive = useDrive();
 
-  const limit = widthRule(rules)?.limit ?? 860;
+  const rule = widthRule(rules);
+  const limit = rule?.limit ?? 860;
   const clearance = telem && telem.lidar && telem.clearance_mm > 0 ? telem.clearance_mm : null;
   const stale = source.kind === 'live' && link !== 'up';
   const roaming = telem?.mode === 'wall_follow';
 
-  const toggleRec = () => {
-    if (!recording) return startRecording();
-    const text = stopRecording(space);
+  // One run button. Starting a run also records the frames in the browser; stopping saves them
+  // as an .ndjson download, so every run leaves a replay file behind without a second button.
+  const toggleRun = () => {
+    const name = space.trim() || 'run';
+    if (!recording) { startRecording(); send({ cmd: 'run', action: 'start', space: name }); return; }
+    send({ cmd: 'run', action: 'stop' });
+    const text = stopRecording(name);
     if (!text) return;
     const a = document.createElement('a');
     a.href = URL.createObjectURL(new Blob([text], { type: 'application/x-ndjson' }));
-    a.download = `${space.replace(/\W+/g, '-').toLowerCase() || 'run'}-${new Date().toISOString().slice(0, 16).replace(/[:T]/g, '-')}.ndjson`;
+    a.download = `${name.replace(/\W+/g, '-').toLowerCase()}-${new Date().toISOString().slice(0, 16).replace(/[:T]/g, '-')}.ndjson`;
     a.click();
     URL.revokeObjectURL(a.href);
   };
@@ -36,35 +43,29 @@ export function Live() {
   return (
     <>
       <div className="controls">
-        <button className={roaming ? 'on' : ''} onClick={() => send({ cmd: 'mode', mode: 'wall_follow' })}>ROAM</button>
-        <button onClick={() => send({ cmd: 'mode', mode: 'idle' })}>IDLE</button>
-        <span className="spacer" />
-        <input value={space} onChange={(e) => setSpace(e.target.value)} placeholder="space name" size={12} />
-        <button onClick={() => send({ cmd: 'run', action: 'start', space })}>Start run</button>
-        <button onClick={() => send({ cmd: 'run', action: 'stop' })}>Stop run</button>
-        <input value={mark} onChange={(e) => setMark(e.target.value)} placeholder="mark label" size={10} />
-        <button onClick={() => send({ cmd: 'mark', label: mark || 'mark' })}>MARK</button>
-        <button onClick={() => send({ cmd: 'map', action: 'clear' })}>Clear map</button>
-        <button onClick={() => send({ cmd: 'beep' })}>BEEP</button>
-        <button className={recording ? 'on' : ''} onClick={toggleRec}>{recording ? '■ Save recording' : '● REC'}</button>
+        <button aria-pressed={roaming} onClick={() => send({ cmd: 'mode', mode: roaming ? 'idle' : 'wall_follow' })}>Roam</button>
+        <span className="gap" />
+        <label className="field">Space <input value={space} onChange={(e) => setSpace(e.target.value)} placeholder="Room 1…" size={12} name="space" /></label>
+        <button className={recording ? 'rec' : 'primary'} aria-pressed={recording} onClick={toggleRun}>{recording ? 'Stop run' : 'Start run'}</button>
+        <button onClick={() => send({ cmd: 'mark', label: 'mark' })}>Mark</button>
+        <button className="quiet end" onClick={() => { send({ cmd: 'map', action: 'clear' }); set({ trail: [] }); }}>Clear map</button>
       </div>
 
-      {stale && <div className="stale-note">LINK DOWN. Last known values, not live.</div>}
+      {stale && <div className="stale-note" role="alert">Link down. Showing the last known values, not live.</div>}
       <div className={`stage ${stale ? 'stale' : ''}`}>
-        <div className="views">
-          <MapView />
-          <LidarView />
-          <History />
-        </div>
+        <MapView />
         <aside>
-          <Clearance value={clearance} limit={limit} tag={telem?.measuring ? 'LOOKING' : telem && !telem.lidar ? 'NO LIDAR' : undefined} />
+          <Clearance value={clearance} limit={limit} source={rule?.source} status={telem && !telem.lidar ? 'No lidar' : undefined} />
           <Pad drive={drive} telem={telem} />
-          <ul className="feed">
-            {events.length === 0 && <li className="info"><span className="kind">·</span><span className="muted">No events yet</span><span /></li>}
-            {events.map((e) => <Row key={e.id} e={e} />)}
-          </ul>
         </aside>
       </div>
+      <section className={`sheet ${stale ? 'stale' : ''}`}>
+        <div className="sheet-head"><h2>Events</h2></div>
+        <ul className="feed">
+          {events.length === 0 && <li className="empty">No events yet. Start a run and drive, or play a replay.</li>}
+          {events.map((e) => <Row key={e.id} e={e} />)}
+        </ul>
+      </section>
     </>
   );
 }
@@ -75,7 +76,7 @@ function Row({ e }: { e: ScoutEvent }) {
     : e.kind === 'ramp' || e.kind === 'mark' ? 'mark' : 'info';
   return (
     <li className={cls}>
-      <span className="kind">{e.kind}</span>
+      <span className="kind">{KIND[e.kind] ?? e.kind}</span>
       <span>
         {eventDetail(e)}
         {e.photo && baseUrl && (
@@ -88,16 +89,24 @@ function Row({ e }: { e: ScoutEvent }) {
   );
 }
 
-function Clearance({ value, limit, tag }: { value: number | null; limit: number; tag?: string }) {
+function Clearance({ value, limit, source, status }: { value: number | null; limit: number; source?: string; status?: string }) {
   const bad = value != null && value < limit;
   const pct = value == null ? 0 : Math.max(0, Math.min(1, value / (2 * limit)));
+  // the verdict is text as well as colour; "No lidar" takes precedence when Scout says so
+  const tag = status ? { text: status, cls: 'warn' } : value == null ? null : bad ? { text: 'Too narrow', cls: 'bad' } : { text: 'Clear', cls: 'good' };
   return (
-    <div className={`gauge ${value == null ? '' : bad ? 'bad' : 'good'}`}>
-      <div className="gauge-head"><span>CLEARANCE</span>{tag && <span className="tag">{tag}</span>}</div>
-      <div className="big">{value ?? '--'}<small>mm</small></div>
-      <div className="bar"><div className="fill" style={{ width: `${pct * 100}%` }} /><div className="limit" style={{ left: '50%' }} /></div>
-      <div className="sub">a wheelchair needs {limit} mm</div>
-    </div>
+    <section className={`sheet gauge ${value == null ? '' : bad ? 'bad' : 'good'}`} aria-live="polite">
+      <div className="sheet-head"><h2>Clearance</h2>{tag && <span className={`tag ${tag.cls}`}>{tag.text}</span>}</div>
+      <div className="gauge-body">
+        {value == null
+          ? <div className="big none">no gap</div>   /* an open room, or the way ahead blocked: nothing to measure across (PROTOCOL.md section 6) */
+          : <div className="big">{value}<small>mm</small></div>}
+        <div className="bar" role="img" aria-label={value == null ? 'no measurement' : `${value} of ${2 * limit} mm, limit at ${limit}`}>
+          <div className="fill" style={{ width: `${pct * 100}%` }} /><div className="limit" style={{ left: '50%' }} />
+        </div>
+        <div className="sub">A wheelchair needs {limit}&nbsp;mm{source ? ` · ${source}` : ''}</div>
+      </div>
+    </section>
   );
 }
 
@@ -155,20 +164,35 @@ function useDrive() {
   return { vec, press, release, stopAll };
 }
 
+const NAME: Record<Dir, string> = { f: 'Forward', b: 'Back', l: 'Left', r: 'Right' };
+const ROT: Record<Dir, number> = { f: 0, r: 90, b: 180, l: 270 };
+
+// What Scout is doing, as a stamp: holding still to look, roaming on its own, driven by hand, or idle.
+const MODE: Record<string, { text: string; cls: string }> = {
+  wall_follow: { text: 'Roaming', cls: 'good' }, teleop: { text: 'Manual', cls: 'warn' }, idle: { text: 'Idle', cls: 'plain' },
+};
+
 function Pad({ drive, telem }: { drive: ReturnType<typeof useDrive>; telem: Telem | null }) {
-  const b = (d: Dir, text: string) => (
-    <button onPointerDown={() => drive.press(d)} onPointerUp={() => drive.release(d)} onPointerLeave={() => drive.release(d)}
-      onContextMenu={(e) => e.preventDefault()}>{text}</button>
+  const mode = !telem ? null : telem.measuring ? { text: 'Looking…', cls: 'warn' } : MODE[telem.mode] ?? { text: telem.mode, cls: 'plain' };
+  const b = (d: Dir) => (
+    <button aria-label={NAME[d]} onPointerDown={() => drive.press(d)} onPointerUp={() => drive.release(d)} onPointerLeave={() => drive.release(d)}
+      onContextMenu={(e) => e.preventDefault()}>
+      <svg width="20" height="20" viewBox="0 0 20 20" aria-hidden="true" style={{ transform: `rotate(${ROT[d]}deg)` }}>
+        <path d="M10 3.5 16 10l-1.4 1.4L11 7.8V16.5H9V7.8L5.4 11.4 4 10z" fill="currentColor" />
+      </svg>
+    </button>
   );
   return (
-    <div>
-      <div className="pad">
-        <span />{b('f', '▲')}<span />
-        {b('l', '◀')}<button className="estop" onClick={drive.stopAll}>STOP</button>{b('r', '▶')}
-        <span />{b('b', '▼')}<span />
+    <section className="sheet padwrap">
+      <div className="sheet-head"><h2>Drive</h2>{mode && <span className={`tag ${mode.cls}`} role="status">{mode.text}</span>}</div>
+      <div className="pad-body">
+        <div className="pad">
+          <span />{b('f')}<span />
+          {b('l')}<button className="danger" aria-label="Emergency stop" onClick={drive.stopAll}>Stop</button>{b('r')}
+          <span />{b('b')}<span />
+        </div>
+        <p className="hint">Arrow keys or WASD drive. Space stops everything. Driving takes over from roaming.</p>
       </div>
-      <p className="muted small">WASD or arrows to drive, space is E-STOP. Driving cancels ROAM.<br />
-        sending v {drive.vec.v.toFixed(2)} w {drive.vec.w.toFixed(2)} · scout v {telem?.v.toFixed(2) ?? '--'} w {telem?.w.toFixed(2) ?? '--'} · {telem?.mode ?? '--'}</p>
-    </div>
+    </section>
   );
 }

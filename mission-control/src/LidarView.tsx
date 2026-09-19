@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { useStore } from './store';
 import type { Evidence, ScanGap } from './protocol';
 
@@ -10,9 +10,9 @@ type Rotation = { pts: [number, number][]; gaps: ScanGap[] };
 // Drawing only. Nothing here feeds the audit; width events come from telem.width_mm.
 
 const COLOUR: Record<Evidence, string> = {
-  see_through: '#3ddc84',   // something was seen through it: really open
-  unverified: '#ffb020',    // an arc of no-returns: opening or dead surface, cannot tell
-  step: '#8b98a5',          // a range step between neighbouring samples
+  see_through: '#237a4a',   // something was seen through it: really open
+  unverified: '#b5841f',    // an arc of no-returns: opening or dead surface, cannot tell
+  step: '#8a8a86',          // a range step between neighbouring samples
 };
 const LABEL: Record<Evidence, string> = {
   see_through: 'open (saw through it)',
@@ -49,10 +49,8 @@ export function LidarView() {
       gaps: telem.gaps ?? [],
     };
   }, [telem]);
-  const [manual, setManual] = useState<number | 'auto'>('auto');
-  const [showLabels, setShowLabels] = useState(true);
   const ref = useRef<HTMLCanvasElement>(null);
-  const range = manual === 'auto' ? autoRange(scan) : manual;
+  const range = autoRange(scan);
   const stale = source.kind === 'live' && link !== 'up';
 
   useEffect(() => {
@@ -70,33 +68,33 @@ export function LidarView() {
     const pxPerMm = (Math.min(w, h) / 2 - 18) / range;
 
     // range rings
-    g.font = '11px system-ui, sans-serif';
+    g.font = '600 11px "IBM Plex Mono", ui-monospace, monospace';
     for (const r of RANGES) {
       if (r > range) break;
       g.beginPath();
       g.arc(cx, cy, r * pxPerMm, 0, Math.PI * 2);
-      g.strokeStyle = '#243040'; g.lineWidth = 1; g.stroke();
-      g.fillStyle = '#8b98a5';
+      g.strokeStyle = '#dcdcd9'; g.lineWidth = 1; g.stroke();
+      g.fillStyle = '#6b6760';
       g.fillText(r >= 1000 ? `${r / 1000} m` : `${r} mm`, cx + 6, cy - r * pxPerMm - 4);
     }
     // cross hairs and the nose
-    g.strokeStyle = '#243040';
+    g.strokeStyle = '#dcdcd9';
     g.beginPath(); g.moveTo(cx - w / 2, cy); g.lineTo(cx + w / 2, cy);
     g.moveTo(cx, cy - h / 2); g.lineTo(cx, cy + h / 2); g.stroke();
-    g.fillStyle = '#8b98a5';
-    g.fillText('ahead', cx + 7, 12);
+    g.fillStyle = '#6b6760';
+    g.fillText('ahead', cx - 7 - g.measureText('ahead').width, 12);   // ring labels sit on the right of the line
     g.fillText('left', 4, cy - 5);
-    g.fillText('right', w - 30, cy - 5);
+    g.fillText('right', w - 6 - g.measureText('right').width, cy - 5);
 
     if (!scan) {
-      g.fillStyle = '#8b98a5'; g.font = '14px system-ui, sans-serif';
+      g.fillStyle = '#6b6760'; g.font = '600 14px "IBM Plex Mono", ui-monospace, monospace';
       g.fillText('no lidar', cx - 26, cy + 4);
       return;
     }
 
     // directions that came back with no return, drawn faintly at full range so a
     // blind arc is visible as blindness rather than as empty space
-    g.strokeStyle = 'rgba(255,176,32,0.13)'; g.lineWidth = 1;
+    g.strokeStyle = 'rgba(181,132,31,0.28)'; g.lineWidth = 1;
     g.beginPath();
     for (const [a, mm] of scan.pts) {
       if (mm > 0) continue;
@@ -109,7 +107,7 @@ export function LidarView() {
     // the outline: join neighbouring returns that are close enough to be one surface.
     // Returns past the current range are left out entirely rather than drawn off the
     // edge, which would trail long lines across the view.
-    g.strokeStyle = '#4da3ff'; g.lineWidth = 1.5;
+    g.strokeStyle = '#23807b'; g.lineWidth = 1.5;
     const valid = scan.pts.filter((p) => p[1] > 0 && p[1] <= range);
     g.beginPath();
     let pen = false;
@@ -123,7 +121,7 @@ export function LidarView() {
     g.stroke();
 
     // the returns themselves
-    g.fillStyle = '#e6edf3';
+    g.fillStyle = '#262320';
     for (const [a, mm] of valid) {
       if (mm <= 0) continue;
       const [x, y] = project(cx, cy, pxPerMm, a, mm);
@@ -146,39 +144,34 @@ export function LidarView() {
       g.setLineDash(gap.evidence === 'unverified' ? [5, 4] : []);
       g.beginPath(); g.moveTo(x0, y0); g.lineTo(x1, y1); g.stroke();
       g.setLineDash([]);
-      if (showLabels && labelled.includes(gap)) {
+      if (labelled.includes(gap)) {
         // nudge the label outward along the bearing so it clears the outline
         const mid = ((gap.a0 + gap.a1) / 2) * (Math.PI / 180);
         const mx = (x0 + x1) / 2 - Math.sin(mid) * 16;
         const my = (y0 + y1) / 2 - Math.cos(mid) * 16;
         const text = `${gap.width_mm} mm`;
-        g.font = '12px system-ui, sans-serif';
+        g.font = '700 12px "IBM Plex Mono", ui-monospace, monospace';
         const tw = g.measureText(text).width;
-        g.fillStyle = 'rgba(11,14,20,0.82)';
+        g.fillStyle = 'rgba(255,255,255,0.92)';
         g.fillRect(mx - tw / 2 - 4, my - 9, tw + 8, 16);
         g.fillStyle = COLOUR[gap.evidence];
         g.fillText(text, mx - tw / 2, my + 3);
       }
     }
-  }, [scan, range, showLabels]);
+  }, [scan, range]);
 
   const counts = countByEvidence(scan?.gaps ?? []);
   return (
-    <div className={`lidar ${stale ? 'stale' : ''}`}>
-      <div className="lidar-head">
-        <span>LIDAR</span>
-        <span className="muted small">
+    <section className={`sheet lidar ${stale ? 'stale' : ''}`}>
+      <div className="sheet-head">
+        <h2>Lidar</h2>
+        <span className="meta">
           {scan ? `${scan.pts.filter((p) => p[1] > 0).length} returns · ${scan.gaps.length} gaps` : 'waiting for a rotation'}
         </span>
-        <span className="spacer" />
-        <select value={String(manual)} onChange={(e) => setManual(e.target.value === 'auto' ? 'auto' : Number(e.target.value))}>
-          <option value="auto">auto range</option>
-          {RANGES.map((r) => <option key={r} value={r}>{r >= 1000 ? `${r / 1000} m` : `${r} mm`}</option>)}
-        </select>
-        <button className={showLabels ? 'on' : ''} onClick={() => setShowLabels(!showLabels)}>mm</button>
       </div>
       <canvas ref={ref} className="lidar-canvas" />
-      <div className="lidar-legend small">
+      <div className="lidar-foot">
+      <div className="lidar-legend">
         {(['see_through', 'unverified', 'step'] as Evidence[]).map((e) => (
           <span key={e}><i style={{ background: COLOUR[e] }} />{LABEL[e]} {counts[e] ? `· ${counts[e]}` : ''}</span>
         ))}
@@ -189,7 +182,8 @@ export function LidarView() {
           from glass, a mirror or matte black, so these are candidates, not measurements.
         </p>
       )}
-    </div>
+      </div>
+    </section>
   );
 }
 

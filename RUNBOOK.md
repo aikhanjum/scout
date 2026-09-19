@@ -132,7 +132,7 @@ Driving stops working and `POST /cmd` replies `motor board not connected`. The l
 Three terminals:
 
 ```
-npm run fake                                         # fake Scout on :8080
+npm run fake                                         # fake Scout on :8080 (a live simulated robot; add a .ndjson path to play a file instead)
 npm run dash                                         # dashboard on :5173
 cd pi && .venv/bin/python tools/fake_redboard.py     # prints a pty path
 ```

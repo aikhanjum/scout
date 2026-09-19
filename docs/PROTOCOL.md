@@ -94,6 +94,30 @@ Rules:
 - `width_mm` = right (`-90`) + left (`90`) + `width_offset_mm`, or `0` when either side is `0` or over 2000 mm.
 - `bump` and `stuck` are always `[0,0]` and `false` in v1. The keys stay so a later version can fill them without a protocol change.
 
+`scan`, 2 Hz, only while the lidar is connected (added in v1.2):
+
+```json
+{"type":"scan","t":5123456,"hz":9.6,"mode":"express",
+ "pts":[[-90.0,178],[-89.7,0],[-89.4,802]],
+ "gaps":[{"a0":-31.2,"mm0":844,"a1":-12.5,"mm1":829,"width_mm":812,"span_deg":18.7,"evidence":"see_through"}]}
+```
+
+- One whole rotation, for drawing. `telem.sweep` stays the five audited angles and is unchanged; nothing in the audit reads `scan`.
+- `pts` is `[angle_deg, mm]` pairs in Scout's own convention (section 2: 0 ahead, negative right), angle to one decimal, ordered by angle. `mm` is `0` for no return, and those entries are kept: where the lidar saw nothing is information, not the absence of it.
+- `hz` is the measured rotation rate and `mode` is `express` or `standard`, so a viewer can say how dense the data is.
+- `gaps` are openings found between wall points, `a0` to `a1` counter-clockwise. `mm0` and `mm1` are the two edge ranges and `width_mm` the straight-line distance between them. The edges are carried here so a consumer never has to search `pts` for them.
+- Only gaps between 150 mm and 3000 mm wide are reported. Below that is sensor noise, above it is open space rather than an opening. The lower bound is under the 1:4 course's 190 mm gate on purpose.
+- `evidence` is how well supported the gap is, and a consumer must not present an `unverified` gap as a measured opening:
+
+  | `evidence` | Meaning |
+  | --- | --- |
+  | `see_through` | Something was seen through the gap, farther than both edges. It is really open. |
+  | `step` | The two edges are neighbouring samples. A range step, such as the corner of an object. |
+  | `unverified` | The arc between the edges is nothing but no-returns. An opening and a surface that does not reflect look identical in one rotation, so this is a candidate, not a measurement. |
+
+- At 2 Hz and about 420 points a rotation this is roughly 10 kB/s. A consumer that only drives and audits can ignore `scan` entirely.
+- Width events never come from `scan`. They come from `telem.width_mm`, which is built from two real returns and is `0` when either side is missing, so an arc of no-returns can never become a measured width.
+
 `event`, when it happens:
 
 ```json
@@ -119,7 +143,7 @@ Rules:
 ### Observable audit behaviour (what the dashboard can rely on)
 
 1. **Slope.** When the absolute pitch stays above 2 degrees for 500 ms, Scout stops, waits 400 ms, averages pitch for 1 s, and emits exactly one `slope_pass` or `slope_fail`. `measuring` is `true` and `v` is `0` throughout. It re-arms only after pitch has been under 1 degree for 1 s, so one ramp gives one event.
-2. **Width.** When `width_mm` drops under 1.4 times the effective limit, a pinch opens. When it rises back above that, or after 3 s, the pinch closes and Scout emits exactly one `width_pass` or `width_fail` carrying the minimum width seen.
+2. **Width.** A pinch opens when either source sees something narrower than 1.4 times the effective limit: `width_mm`, which is the corridor at Scout's own position, or a `see_through` gap in the scan that is ahead of Scout and close to it. The pinch closes as soon as neither source sees anything narrow, or 8 s after it opened, and Scout emits exactly one `width_pass` or `width_fail` carrying the minimum width either source saw. One doorway gives one event whether Scout drove through it or only looked at it. A gap counts only when its `evidence` is `see_through`; `unverified` gaps never reach the audit, and neither do `step` gaps.
 3. Events fire in every mode, run or no run. Slope needs the IMU; width needs the lidar. A missing device silently disables its own audit and nothing else.
 
 ## 6. Run log (NDJSON)
@@ -215,6 +239,20 @@ ESP32 to Pi, JSON lines:
 - Opening the port resets the ESP32 (DTR). It reboots in about a second, prints `hello`, calibrates the gyro for 2 s (robot still), and streams. The Pi tolerates the bootloader's non-JSON lines.
 
 ## Changelog
+
+v1.3, 2026-09-19: gaps can open a width pinch. Additive, `proto` stays 1. **Needs the same sign-off.**
+
+- Section 5, observable audit behaviour 2: the width pinch now takes a second input, a `see_through` gap from the scan that is ahead of Scout and close to it. Frames, kinds and fields are unchanged; only when an event fires can differ.
+- One doorway still gives exactly one event. The two sources feed one pinch and the event carries the minimum either saw, so a doorway Scout drives through is still measured by `width_mm` as before. Seeing a gate ahead and then driving through it is one continuous pinch, not two.
+- The pinch's hard cap goes from 3 s to 8 s, because an approach plus the drive through is longer than 3 s. It still closes the instant neither source sees anything narrow, so verdict timing at the gate is unchanged.
+- `unverified` gaps never reach the audit, by construction. An arc of no-returns cannot become an event, only a candidate drawn in the view.
+- Thresholds live in `pi/scout/audit.py`: a gap counts when its middle bearing is within 60 degrees of straight ahead and both edges are within 2500 mm.
+
+v1.2, 2026-09-19: the `scan` frame. Additive, `proto` stays 1. **Needs sign-off from all three code owners before it is final.**
+
+- `scan` added to section 5: one full rotation plus detected gaps, at 2 Hz, for the dashboard's lidar view. Nothing else reads it and the audit is untouched.
+- Gaps carry `evidence`, because a lidar cannot tell an opening from a non-reflective surface in a single rotation. `unverified` gaps must never be shown as measurements.
+- No change to `telem`, `event`, commands, `/status` or the serial contract.
 
 v1.1, 2026-09-19: the Pi becomes the brain. Additive, `proto` stays 1.
 

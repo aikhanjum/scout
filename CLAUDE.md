@@ -57,7 +57,9 @@ data/rules.json         limits, rule text, sources, table_scale
 - Commands: `drive v w`, `stop`, `mode`, `run start|stop`, `mark`, `zero`, `beep`, `config`. Also accepted as text frames on `/ws`.
 - Teleop watchdog on the ESP32: no `drive` for 500 ms stops the motors. The dashboard resends every 100 ms while a key is held.
 - `telem` at 10 Hz: `t mode measuring imu lidar pitch_deg roll_deg yaw_deg sweep[{a,mm}] width_mm bump stuck v w`. `imu`/`lidar` false means those readings are missing, not zero.
+- `scan` at 2 Hz (v1.2): one whole rotation `pts` plus `gaps`, each with `evidence` of `see_through|step|unverified`. Drawing only.
 - `event`: `t seq kind value unit limit scale space`. Kinds: `slope_pass|fail`, `width_pass|fail`, `mark`, `run_start|stop`, `tilt_cutoff`.
+- A width pinch opens from `width_mm` or from a `see_through` gap ahead (v1.3). `unverified` gaps never fire events.
 - `value` is raw, `limit` is after scale, `scale` is what was applied (1.0 for slope). Full scale = `value / scale`.
 - Table mode is `scale 0.25`, so the 860 mm width limit becomes 215. The dashboard shows a "Scale course 1:4" badge and never presents course numbers as building numbers.
 - Run log NDJSON: header line `{"type":"run",...}`, then frames exactly as sent. Players time by `t` deltas.

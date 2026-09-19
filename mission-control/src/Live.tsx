@@ -5,6 +5,7 @@ import { widthRule, type ScoutEvent, type Telem } from './protocol';
 import { detail as eventDetail } from './verdict';
 import { MapView } from './MapView';
 import { LidarView } from './LidarView';
+import { History } from './History';
 
 const SPEED = 0.5, TURN = 0.5;
 type Dir = 'f' | 'b' | 'l' | 'r';
@@ -53,6 +54,7 @@ export function Live() {
         <div className="views">
           <MapView />
           <LidarView />
+          <History />
         </div>
         <aside>
           <Clearance value={clearance} limit={limit} tag={telem?.measuring ? 'LOOKING' : telem && !telem.lidar ? 'NO LIDAR' : undefined} />

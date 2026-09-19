@@ -85,3 +85,11 @@ main { padding: 16px; display: grid; gap: 16px; }
 .lidar-note { margin: 6px 0 0; max-width: 62ch; }
 
 .views { display: grid; gap: 16px; min-width: 0; }
+
+/* Room over time (data/history.json) */
+.history { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; }
+.hist { width: 100%; border-collapse: collapse; margin-top: 6px; font-variant-numeric: tabular-nums; }
+.hist th { text-align: left; color: var(--muted); font-weight: 600; font-size: 13px; letter-spacing: .05em; padding: 4px 8px; border-bottom: 1px solid var(--line); }
+.hist td { padding: 5px 8px; border-bottom: 1px solid var(--line); }
+.hist tr:last-child td { border-bottom: 0; }
+.green { color: var(--green); }

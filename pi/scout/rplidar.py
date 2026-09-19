@@ -1,7 +1,7 @@
 # Vendored from ~/dev/lidar-gaps/lidar_gaps/rplidar.py on 2026-09-19 (that project is not a git repo).
 # Edit there first, then copy here. Its tests live in ~/dev/lidar-gaps/tests/test_rplidar.py.
 
-"""Minimal RPLIDAR A1 driver over pyserial.
+"""RPLIDAR driver over pyserial: A1, A2M8 (the one on Scout) and newer models.
 
 Protocol details come straight from the Slamtec SDK headers
 (sdk/include/sl_lidar_protocol.h and sl_lidar_cmd.h):

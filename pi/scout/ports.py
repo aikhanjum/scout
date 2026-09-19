@@ -54,7 +54,7 @@ def looks_like_esp32(device, listen_s=3.0):
 def looks_like_lidar(device):
     """Ask for device info the way the SDK does. Returns DeviceInfo or None."""
     try:
-        lidar = rplidar.RPLidarA1(device, timeout_s=1.0)
+        lidar = rplidar.RPLidar(device, timeout_s=1.0)
     except rplidar.LidarNotFound as e:
         log.debug("probe %s as lidar: %s", device, e)
         return None

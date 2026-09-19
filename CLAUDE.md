@@ -9,7 +9,7 @@ Hack the North 2026. Submission closes Sunday 2026-09-20 08:00 EDT. Full spec: `
 ## Architecture
 
 ```
-ESP32 (motors, 500 ms watchdog)  <-- USB serial -->  Pi 4 (RPLIDAR A1, camera, pose, map, audit, protocol server :8080)  <-- wifi -->  dashboard (Chrome)
+ESP32 (motors, 500 ms watchdog)  <-- USB serial -->  Pi 4 (RPLIDAR A2M8, camera, pose, map, audit, protocol server :8080)  <-- wifi -->  dashboard (Chrome)
 ```
 
 There is no Hub. The dashboard talks to the Pi directly. The fake Scout and any replay file are interchangeable with the real robot. Development happens on the Mac with the ESP32 and the lidar plugged in by USB; the Pi service is copied to the Pi unchanged.

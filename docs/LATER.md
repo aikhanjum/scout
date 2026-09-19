@@ -21,7 +21,7 @@ Everything cut from the plan, with the reason. New ideas go here, not in code. N
 - **Phone remote page `GET /`**: S2 in SPEC.md if time. Would be a static page served by the Pi.
 - **Bumper reflex, stuck detection, `bump` and `stuck` telemetry**: keys reserved, always `[0,0]` / `false`.
 - **Front-distance obstacle stop**: the lidar sees ahead now; a "stop if anything is under 250 mm ahead while driving forward" rule is 10 lines in `pi/scout/server.py` and worth doing before the phone rides on Scout.
-- **Wheel encoders, mapping, SLAM, floor plans from the lidar**: no odometry by design. The A1 could do a floor-plan slice per space one day.
+- **Wheel encoders and true SLAM**: no odometry by design. Position comes from fitting the room's rectangle in each A2M8 scan (`docs/SPEC.md`), which is why Scout maps one rectangular room at a time.
 
 ## Cut on 2026-09-19 after the lidar went in
 

@@ -103,7 +103,7 @@ class Lidar:
             time.sleep(3)
 
     def _session(self, device):
-        lidar = rplidar.RPLidarA1(device, timeout_s=1.0)
+        lidar = rplidar.RPLidar(device, timeout_s=1.0)
         try:
             ports.in_use.add(device)
             info = lidar.get_info()

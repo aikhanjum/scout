@@ -28,7 +28,7 @@ Gone in v2: the MPU6050. Scout has no IMU and measures no slope. Also gone since
 
 ## Pi 4, lidar and camera
 
-- **RPLIDAR A1** on the Pi by USB (its CP2102 adapter). Mount it level, at the top, with a clear 360 degree view: nothing of the robot above the beam plane, or that part of the robot becomes a permanent wall in every scan and the room fit fails. Note which way the A1's 0 degree mark points; if it is not straight ahead, set `SCOUT_LIDAR_OFFSET_DEG`.
+- **RPLIDAR A2M8** on the Pi by USB (its CP2102 adapter). Its motor does not spin on power alone; the driver starts it by PWM through the adapter, so a healthy-looking lidar that streams nothing means the motor command did not take. Mount it level, at the top, with a clear 360 degree view: nothing of the robot above the beam plane, or that part of the robot becomes a permanent wall in every scan and the room fit fails. Note which way the A2M8's 0 degree mark points; if it is not straight ahead, set `SCOUT_LIDAR_OFFSET_DEG`.
 - **Pi camera** on the CSI ribbon, fixed, facing straight forward, roughly level. It only ever looks at what is directly in front of Scout, so it does not pan and needs no servo. Mount it rigidly: a camera that droops points at the floor.
 - **ESP32** on the Pi by USB. That cable is also the ESP32's power.
 - The Pi needs a true 5 V / 3 A source. Budget: Pi 4 up to 3 A peak, lidar about 0.4 A, camera about 0.25 A, ESP32 about 0.2 A.

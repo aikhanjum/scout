@@ -1,6 +1,6 @@
 # Scout
 
-Scout is a small rover that drives itself around a room like a Roomba and draws a 2D accessibility map of it. Its RPLIDAR A1 does the geometry — where the walls are, where obstacles are, and how wide the gaps between them are — and the Pi camera does the naming, saying what each obstacle is and whether it is a ramp. Every gap is checked against the Ontario Building Code's 860 mm clear width, and anything too narrow gets a red light, a beep and a spoken verdict on the spot. A Raspberry Pi 4 is the brain, an ESP32 drives the motors, and a browser dashboard shows the map filling in live. Built at Hack the North 2026.
+Scout is a small rover that drives itself around a room like a Roomba and draws a 2D accessibility map of it. Its RPLIDAR A2M8 does the geometry — where the walls are, where obstacles are, and how wide the gaps between them are — and the Pi camera does the naming, saying what each obstacle is and whether it is a ramp. Every gap is checked against the Ontario Building Code's 860 mm clear width, and anything too narrow gets a red light, a beep and a spoken verdict on the spot. A Raspberry Pi 4 is the brain, an ESP32 drives the motors, and a browser dashboard shows the map filling in live. Built at Hack the North 2026.
 
 Scout has no IMU and measures no slope: a ramp meeting a horizontal scan plane looks exactly like a wall. So ramps are **labelled by the camera and never judged**, and clearance width is the only building-code verdict Scout gives.
 

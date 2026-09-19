@@ -249,6 +249,6 @@ v2, 2026-09-19: no IMU. The lidar maps, the camera names, Scout roams on its own
 v1.1, 2026-09-19: the Pi becomes the brain. Additive, `proto` stayed 1.
 
 - Scout's network endpoint became the Pi at `scout.local:8080`. The ESP32 lost wifi, HTTP and its WebSocket.
-- The Pi to ESP32 serial contract was added; `devices` was added to `/status`; `sweep` came from the RPLIDAR A1 instead of a sonar turret.
+- The Pi to ESP32 serial contract was added; `devices` was added to `/status`; `sweep` came from the RPLIDAR A2M8 instead of a sonar turret.
 
 v1, 2026-09-19: Hub removed, the dashboard speaks to Scout directly, commands accepted as `/ws` text frames, data file formats added.

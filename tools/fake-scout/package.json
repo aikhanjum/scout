@@ -1,0 +1,12 @@
+{
+  "name": "fake-scout",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node server.js",
+    "gen": "node gen.js"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  }
+}

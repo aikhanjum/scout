@@ -227,7 +227,12 @@ class Scout:
         while True:
             now = time.monotonic()
             scan = list(self.lidar.scan) if self.lidar.connected else []
-            moving = bool(self.esp32.drive and (abs(self.esp32.drive.v) > 0.01 or abs(self.esp32.drive.w) > 0.01))
+            # Whether Scout is moving decides if a failed fit may hold the last pose. With no ESP32
+            # there is nothing reporting wheel speed, so assume it is moving: holding a pose that
+            # is only valid while stationary, for a lidar someone is carrying across the room, puts
+            # returns metres from where they were taken and writes them into the map as fact.
+            d = self.esp32.drive
+            moving = True if d is None else (abs(d.v) > 0.01 or abs(d.w) > 0.01)
 
             if scan:
                 self.pose.update(scan, moving=moving)

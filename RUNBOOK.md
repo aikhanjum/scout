@@ -14,7 +14,7 @@ Power the Pi. It starts on its own through systemd. Give it 30 seconds, then fro
 curl http://scout.local:8080/status
 ```
 
-You want `"lidar":true` and `"esp32":true` in `devices`. If `curl` cannot resolve `scout.local`, the Pi is not on the hotspot. Turn the hotspot on first, then reboot the Pi.
+You want `"lidar":true` and `"esp32":true` in `devices`. `"camera":false` only costs you the labels: obstacles come out as "unknown" and everything else still works. If `curl` cannot resolve `scout.local`, the Pi is not on the hotspot. Turn the hotspot on first, then reboot the Pi.
 
 First time on a new Pi, or if `systemctl` says there is no `scout` unit, do the install steps in
 `pi/README.md` once. After that it starts on every boot.
@@ -45,16 +45,18 @@ Top right, the **Live** box. Type and press **Connect**:
 ws://scout.local:8080/ws
 ```
 
-The badge goes **LINK UP** and the gauges move. The URL is remembered, so you only do this once per laptop.
+The badge goes **LINK UP** and the map starts drawing itself. The URL is remembered, so you only do this once per laptop.
 
 ## 4. Switch to replay (the backup)
 
 If the robot will not connect, or it misbehaves on stage:
 
-1. Pick `table-course.ndjson` in the **Replay** dropdown, top right.
+1. Pick `room-scan.ndjson` in the **Replay** dropdown, top right.
 2. Click **Play**.
 
-The badge changes to **REPLAY** and the whole run plays: ramp, slope failure, both gates, the lidar view. It loops. Say out loud that it is a recording. To go back to the robot, press **Connect** again.
+The badge changes to **REPLAY** and the whole run plays: the room drawing itself, the chair and the ramp named as Scout stops in front of them, the 510 mm slot failing, the lidar view. It loops. Say out loud that it is a recording. To go back to the robot, press **Connect** again.
+
+The replay is a simulated room, not a recording of this robot, and the obstacle labels in it are scripted rather than classified. Say that too if anyone asks what they are watching.
 
 Replay needs no robot and no fake server. It reads the file straight from the dashboard.
 
@@ -121,7 +123,7 @@ Point the dashboard at `ws://localhost:8081/ws` for the real lidar, or `ws://loc
 ## 9. Checks that need no hardware
 
 ```
-cd pi && .venv/bin/python tools/check_audit.py       # slope and width logic
+cd pi && .venv/bin/python tools/check_audit.py       # clearance and gap logic, 17 checks
 npm run gen                                          # regenerate the replay file
 ```
 
@@ -129,6 +131,7 @@ npm run gen                                          # regenerate the replay fil
 
 - Hotspot on, 2.4 GHz. Pi booted. `curl http://scout.local:8080/status` answers with all three devices true.
 - Dashboard full screen, clicked once, volume up, pointed at `ws://scout.local:8080/ws`.
-- **TABLE MODE ON**, and the orange "Scale course 1:4" badge is visible. Without it every number on screen is wrong by four times.
+- The room is clear of feet and bags. People standing in it become obstacles and break the rectangle fit, and when the fit goes so does the map.
+- Press **ROAM** once and watch the room close before you start talking. If the map does not close a loop, drive it by hand: the width verdicts still fire.
 - A replay armed in the dropdown, and the backup video open in another tab.
-- Fresh AAs, power bank full, spares on the table.
+- Fresh cells, power bank full, spares on the table.

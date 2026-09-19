@@ -1,26 +1,36 @@
 import type { ScoutEvent } from './protocol';
 
 // Deterministic verdict lines, spoken by the browser and shown in the feed. No AI.
-// Scaled course numbers are spoken at full scale and say so.
+// Width is the only thing Scout judges. A ramp or an obstacle is named, never judged,
+// because nothing on Scout measures slope (PROTOCOL.md, top).
 export function verdict(e: ScoutEvent): string {
-  const scale = e.scale ?? 1;
+  const cm = (mm: number) => Math.round(mm / 10);
   const value = e.value ?? 0, limit = e.limit ?? 0;
-  const cm = (mm: number) => Math.round(mm / scale / 10);
-  const fs = scale !== 1 ? ' at full scale' : '';
+  const where = e.between === 'wall-obstacle' ? 'between a wall and an obstacle' : 'between the walls';
   switch (e.kind) {
-    case 'slope_fail': return `Ramp too steep. ${value.toFixed(1)} degrees. The limit is ${limit.toFixed(1)}.`;
-    case 'slope_pass': return `Ramp OK. ${value.toFixed(1)} degrees.`;
-    case 'width_fail': return `Doorway too narrow. ${cm(value)} centimeters${fs}. A wheelchair needs ${cm(limit)}.`;
-    case 'width_pass': return `Doorway OK. ${cm(value)} centimeters${fs}.`;
+    case 'width_fail': return `Too narrow ${where}. ${cm(value)} centimeters. A wheelchair needs ${cm(limit)}.`;
+    case 'width_pass': return `Clear ${where}. ${cm(value)} centimeters.`;
+    case 'ramp': return 'Ramp here.';
+    case 'obstacle': return `Obstacle: ${e.label || 'unknown'}.`;
     case 'mark': return `Marked: ${e.label ?? ''}.`;
-    case 'tilt_cutoff': return 'Tilt cutoff. Motors stopped.';
     case 'run_start': return `Run started${e.space ? `: ${e.space}` : ''}.`;
     case 'run_stop': return 'Run stopped.';
     default: return e.kind;
   }
 }
 
-export const SPOKEN = new Set(['slope_fail', 'slope_pass', 'width_fail', 'width_pass', 'mark', 'tilt_cutoff']);
+// What the feed shows under the kind. Obstacles carry how sure the camera was.
+export function detail(e: ScoutEvent): string {
+  if (e.kind === 'obstacle' || e.kind === 'ramp') {
+    const c = e.confidence ? ` ${Math.round(e.confidence * 100)}%` : '';
+    return `${e.label || 'unknown'}${c}`;
+  }
+  if (e.kind === 'width_pass' || e.kind === 'width_fail') return `${e.value} mm / limit ${e.limit} mm · ${e.between ?? ''}`;
+  return verdict(e);
+}
+
+// Obstacles are frequent, so they are not spoken; ramps and width verdicts are.
+export const SPOKEN = new Set(['width_fail', 'width_pass', 'ramp', 'mark']);
 
 export function speak(text: string) {
   if (!('speechSynthesis' in window)) return;

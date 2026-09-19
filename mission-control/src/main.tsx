@@ -22,8 +22,7 @@ async function loadJson<T>(path: string): Promise<T | null> {
 const DEFAULT_URL = 'ws://localhost:8080/ws';
 
 (async () => {
-  const [rules, spaces] = await Promise.all([loadJson<never>('/rules.json'), loadJson<never>('/spaces.json')]);
-  useStore.getState().set({ rules, spaces });
+  useStore.getState().set({ rules: await loadJson<never>('/rules.json') });
   let url = DEFAULT_URL;
   try { url = localStorage.getItem('scout.url') ?? DEFAULT_URL; } catch { /* private window etc. */ }
   connect({ kind: 'live', url });

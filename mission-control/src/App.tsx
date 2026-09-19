@@ -2,23 +2,17 @@ import { useEffect, useState } from 'react';
 import { useStore } from './store';
 import { connect } from './scout';
 import { Live } from './Live';
-import { Spaces } from './Spaces';
 
 const DEFAULT_URL = 'ws://localhost:8080/ws';
 
 export function App() {
-  const [tab, setTab] = useState<'live' | 'spaces'>('live');
   return (
     <>
       <header>
         <h1>SCOUT</h1>
-        <nav className="tabs">
-          <button className={tab === 'live' ? 'active' : ''} onClick={() => setTab('live')}>LIVE</button>
-          <button className={tab === 'spaces' ? 'active' : ''} onClick={() => setTab('spaces')}>SPACES</button>
-        </nav>
         <SourceBar />
       </header>
-      <main>{tab === 'live' ? <Live /> : <Spaces />}</main>
+      <main><Live /></main>
     </>
   );
 }
@@ -42,7 +36,7 @@ function SourceBar() {
       <span className={`link ${state}`}>{label}</span>
       <span className="muted detail">{detail}</span>
       <span className="spacer" />
-      <label>Live <input list="urls" value={url} onChange={(e) => setUrl(e.target.value)} size={24} /></label>
+      <label>Live <input list="urls" value={url} onChange={(e) => setUrl(e.target.value)} size={22} /></label>
       <datalist id="urls">
         <option value={DEFAULT_URL} /><option value="ws://scout.local:8080/ws" />
       </datalist>

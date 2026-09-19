@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { useStore } from './store';
-import { send, sendConfig, startRecording, stopRecording } from './scout';
-import { ruleFor, type Telem } from './protocol';
-import { verdict } from './verdict';
+import { send, startRecording, stopRecording } from './scout';
+import { widthRule, type ScoutEvent, type Telem } from './protocol';
+import { detail as eventDetail } from './verdict';
+import { MapView } from './MapView';
 import { LidarView } from './LidarView';
 
 const SPEED = 0.5, TURN = 0.5;
@@ -10,20 +11,16 @@ type Dir = 'f' | 'b' | 'l' | 'r';
 const KEYS: Record<string, Dir> = { w: 'f', arrowup: 'f', s: 'b', arrowdown: 'b', a: 'l', arrowleft: 'l', d: 'r', arrowright: 'r' };
 
 export function Live() {
-  const { telem, events, link, source, scale, tableMode, rules, recording, set } = useStore();
-  const [space, setSpace] = useState('Table course');
+  const { telem, events, link, source, rules, recording } = useStore();
+  const [space, setSpace] = useState('Room 1');
   const [mark, setMark] = useState('');
   const drive = useDrive();
 
-  const slopeLimit = ruleFor(rules, 'slope')?.limit ?? 4.76;
-  const widthLimit = (ruleFor(rules, 'width')?.limit ?? 860) * scale;
-  const imuOk = telem?.imu !== false, lidarOk = telem?.lidar !== false;
-  const pitch = telem && imuOk ? Math.abs(telem.pitch_deg) : null;
-  const width = telem && lidarOk && telem.width_mm > 0 ? telem.width_mm : null;
+  const limit = widthRule(rules)?.limit ?? 860;
+  const clearance = telem && telem.lidar && telem.clearance_mm > 0 ? telem.clearance_mm : null;
   const stale = source.kind === 'live' && link !== 'up';
-  const cm = (mm: number) => Math.round(mm / scale / 10);
+  const roaming = telem?.mode === 'wall_follow';
 
-  const toggleTable = () => { set({ tableMode: !tableMode }); sendConfig(); };
   const toggleRec = () => {
     if (!recording) return startRecording();
     const text = stopRecording(space);
@@ -38,65 +35,71 @@ export function Live() {
   return (
     <>
       <div className="controls">
-        <button className={tableMode ? 'on' : ''} onClick={toggleTable}>TABLE MODE {tableMode ? 'ON' : 'OFF'}</button>
-        {scale !== 1 && <span className="badge">Scale course 1:{Math.round(1 / scale)}</span>}
+        <button className={roaming ? 'on' : ''} onClick={() => send({ cmd: 'mode', mode: 'wall_follow' })}>ROAM</button>
+        <button onClick={() => send({ cmd: 'mode', mode: 'idle' })}>IDLE</button>
         <span className="spacer" />
-        <input value={space} onChange={(e) => setSpace(e.target.value)} placeholder="space name" size={14} />
+        <input value={space} onChange={(e) => setSpace(e.target.value)} placeholder="space name" size={12} />
         <button onClick={() => send({ cmd: 'run', action: 'start', space })}>Start run</button>
         <button onClick={() => send({ cmd: 'run', action: 'stop' })}>Stop run</button>
         <input value={mark} onChange={(e) => setMark(e.target.value)} placeholder="mark label" size={10} />
         <button onClick={() => send({ cmd: 'mark', label: mark || 'mark' })}>MARK</button>
-        <button onClick={() => send({ cmd: 'zero' })}>ZERO</button>
+        <button onClick={() => send({ cmd: 'map', action: 'clear' })}>Clear map</button>
         <button onClick={() => send({ cmd: 'beep' })}>BEEP</button>
         <button className={recording ? 'on' : ''} onClick={toggleRec}>{recording ? '■ Save recording' : '● REC'}</button>
       </div>
 
       {stale && <div className="stale-note">LINK DOWN. Last known values, not live.</div>}
-      <div className={stale ? 'stale' : ''}>
-        <div className="gauges">
-          <Gauge label="SLOPE" value={pitch?.toFixed(1)} unit="°"
-            pct={pitch == null ? 0 : pitch / 12} limitPct={slopeLimit / 12}
-            bad={pitch != null && pitch > slopeLimit}
-            tag={telem?.measuring ? 'MEASURING' : telem && !imuOk ? 'NO IMU' : undefined}
-            sub={`limit ${slopeLimit}°`} />
-          <Gauge label="WIDTH" value={width == null ? undefined : String(width)} unit="mm"
-            pct={width == null ? 0 : width / (2 * widthLimit)} limitPct={0.5}
-            bad={width != null && width < widthLimit}
-            tag={telem && !lidarOk ? 'NO LIDAR' : undefined}
-            sub={scale !== 1
-              ? `${width == null ? '--' : cm(width)} cm at full scale · limit ${Math.round(widthLimit)} mm (${cm(widthLimit)} cm)`
-              : `limit ${Math.round(widthLimit)} mm`} />
+      <div className={`stage ${stale ? 'stale' : ''}`}>
+        <div className="views">
+          <MapView />
+          <LidarView />
         </div>
-        <LidarView />
-        <div className="bottom">
+        <aside>
+          <Clearance value={clearance} limit={limit} tag={telem?.measuring ? 'LOOKING' : telem && !telem.lidar ? 'NO LIDAR' : undefined} />
           <Pad drive={drive} telem={telem} />
           <ul className="feed">
             {events.length === 0 && <li className="info"><span className="kind">·</span><span className="muted">No events yet</span><span /></li>}
-            {events.map((e) => (
-              <li key={e.id} className={e.kind.endsWith('fail') ? 'fail' : e.kind.endsWith('pass') ? 'pass' : e.kind === 'mark' ? 'mark' : 'info'}>
-                <span className="kind">{e.kind}</span><span>{verdict(e)}</span><span className="t">{(e.t / 1000).toFixed(1)}s</span>
-              </li>
-            ))}
+            {events.map((e) => <Row key={e.id} e={e} />)}
           </ul>
-        </div>
+        </aside>
       </div>
     </>
   );
 }
 
-function Gauge(p: { label: string; value?: string; unit: string; pct: number; limitPct: number; bad: boolean; tag?: string; sub: string }) {
-  const w = (x: number) => `${Math.max(0, Math.min(1, x)) * 100}%`;
+function Row({ e }: { e: ScoutEvent }) {
+  const baseUrl = useStore((s) => s.baseUrl);
+  const cls = e.kind === 'width_fail' ? 'fail' : e.kind === 'width_pass' ? 'pass'
+    : e.kind === 'ramp' || e.kind === 'mark' ? 'mark' : 'info';
   return (
-    <div className={`gauge ${p.value == null ? '' : p.bad ? 'bad' : 'good'}`}>
-      <div className="gauge-head"><span>{p.label}</span>{p.tag && <span className="tag">{p.tag}</span>}</div>
-      <div className="big">{p.value ?? '--'}<small>{p.unit}</small></div>
-      <div className="bar"><div className="fill" style={{ width: w(p.pct) }} /><div className="limit" style={{ left: w(p.limitPct) }} /></div>
-      <div className="sub">{p.sub}</div>
+    <li className={cls}>
+      <span className="kind">{e.kind}</span>
+      <span>
+        {eventDetail(e)}
+        {e.photo && baseUrl && (
+          // the still Scout kept when it classified this. Missing on a fake or a replay: just hide it.
+          <img className="shot" src={`${baseUrl}/photo/${e.photo}`} alt="" onError={(ev) => { ev.currentTarget.style.display = 'none'; }} />
+        )}
+      </span>
+      <span className="t">{(e.t / 1000).toFixed(1)}s</span>
+    </li>
+  );
+}
+
+function Clearance({ value, limit, tag }: { value: number | null; limit: number; tag?: string }) {
+  const bad = value != null && value < limit;
+  const pct = value == null ? 0 : Math.max(0, Math.min(1, value / (2 * limit)));
+  return (
+    <div className={`gauge ${value == null ? '' : bad ? 'bad' : 'good'}`}>
+      <div className="gauge-head"><span>CLEARANCE</span>{tag && <span className="tag">{tag}</span>}</div>
+      <div className="big">{value ?? '--'}<small>mm</small></div>
+      <div className="bar"><div className="fill" style={{ width: `${pct * 100}%` }} /><div className="limit" style={{ left: '50%' }} /></div>
+      <div className="sub">a wheelchair needs {limit} mm</div>
     </div>
   );
 }
 
-// Teleop. While any key or button is held, resend drive every 100 ms (PROTOCOL.md section 4).
+// Teleop. While any key or button is held, resend drive every 100 ms (PROTOCOL.md section 5).
 // Release sends stop. Space is E-STOP. Losing window focus sends stop.
 function useDrive() {
   const held = useRef(new Set<Dir>());
@@ -162,7 +165,7 @@ function Pad({ drive, telem }: { drive: ReturnType<typeof useDrive>; telem: Tele
         {b('l', '◀')}<button className="estop" onClick={drive.stopAll}>STOP</button>{b('r', '▶')}
         <span />{b('b', '▼')}<span />
       </div>
-      <p className="muted small">WASD or arrows to drive, space is E-STOP.<br />
+      <p className="muted small">WASD or arrows to drive, space is E-STOP. Driving cancels ROAM.<br />
         sending v {drive.vec.v.toFixed(2)} w {drive.vec.w.toFixed(2)} · scout v {telem?.v.toFixed(2) ?? '--'} w {telem?.w.toFixed(2) ?? '--'} · {telem?.mode ?? '--'}</p>
     </div>
   );

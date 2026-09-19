@@ -1,8 +1,11 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useStore } from './store';
-import type { Evidence, Scan, ScanGap } from './protocol';
+import type { Evidence, ScanGap } from './protocol';
 
-// Top-down view of one lidar rotation (PROTOCOL.md section 5, the scan frame).
+// One rotation as this view wants it, rebuilt from telem (PROTOCOL.md section 6).
+type Rotation = { pts: [number, number][]; gaps: ScanGap[] };
+
+// Top-down view of one lidar rotation (PROTOCOL.md section 6, telem.scan and telem.gaps).
 // Scout's frame: 0 degrees is straight ahead, positive is left. On screen ahead is up.
 // Drawing only. Nothing here feeds the audit; width events come from telem.width_mm.
 
@@ -27,7 +30,7 @@ const project = (cx: number, cy: number, pxPerMm: number, deg: number, mm: numbe
 // Frame the room, not the outliers. A handful of long sight lines down a corridor
 // would otherwise squash everything nearby into a dot, so scale on the median
 // return, which is whatever surface Scout is actually surrounded by.
-function autoRange(scan: Scan | null) {
+function autoRange(scan: Rotation | null) {
   const valid = (scan?.pts ?? []).filter((p) => p[1] > 0).map((p) => p[1]).sort((a, b) => a - b);
   if (!valid.length) return 2000;
   const median = valid[Math.floor(valid.length / 2)];
@@ -35,7 +38,17 @@ function autoRange(scan: Scan | null) {
 }
 
 export function LidarView() {
-  const { scan, scale, link, source } = useStore();
+  const { telem, link, source } = useStore();
+  // v2 carries the rotation as telem.scan, 360 ints by bearing, with the gaps found in it.
+  // Rebuilt here into the {pts, gaps} shape this view already draws, so the drawing code below
+  // is untouched and there is still only one representation of a rotation on the wire.
+  const scan = useMemo(() => {
+    if (!telem?.lidar || telem.scan.length !== 360) return null;
+    return {
+      pts: telem.scan.map((mm, i) => [i > 180 ? i - 360 : i, mm] as [number, number]),
+      gaps: telem.gaps ?? [],
+    };
+  }, [telem]);
   const [manual, setManual] = useState<number | 'auto'>('auto');
   const [showLabels, setShowLabels] = useState(true);
   const ref = useRef<HTMLCanvasElement>(null);
@@ -138,9 +151,7 @@ export function LidarView() {
         const mid = ((gap.a0 + gap.a1) / 2) * (Math.PI / 180);
         const mx = (x0 + x1) / 2 - Math.sin(mid) * 16;
         const my = (y0 + y1) / 2 - Math.cos(mid) * 16;
-        const text = scale !== 1
-          ? `${gap.width_mm} mm (${Math.round(gap.width_mm / scale / 10)} cm full)`
-          : `${gap.width_mm} mm`;
+        const text = `${gap.width_mm} mm`;
         g.font = '12px system-ui, sans-serif';
         const tw = g.measureText(text).width;
         g.fillStyle = 'rgba(11,14,20,0.82)';
@@ -149,7 +160,7 @@ export function LidarView() {
         g.fillText(text, mx - tw / 2, my + 3);
       }
     }
-  }, [scan, range, scale, showLabels]);
+  }, [scan, range, showLabels]);
 
   const counts = countByEvidence(scan?.gaps ?? []);
   return (
@@ -157,7 +168,7 @@ export function LidarView() {
       <div className="lidar-head">
         <span>LIDAR</span>
         <span className="muted small">
-          {scan ? `${scan.pts.length} pts · ${scan.hz} Hz · ${scan.mode}` : 'waiting for a rotation'}
+          {scan ? `${scan.pts.filter((p) => p[1] > 0).length} returns · ${scan.gaps.length} gaps` : 'waiting for a rotation'}
         </span>
         <span className="spacer" />
         <select value={String(manual)} onChange={(e) => setManual(e.target.value === 'auto' ? 'auto' : Number(e.target.value))}>

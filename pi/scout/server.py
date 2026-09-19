@@ -1,5 +1,6 @@
 """Protocol v2 over HTTP and WebSocket (aiohttp), the 10 Hz loop, and the run buffer."""
 import asyncio
+from datetime import datetime, timezone
 import json
 import logging
 import math
@@ -38,6 +39,10 @@ def _ip():
         return "127.0.0.1"
 
 
+def _utc_now():
+    return datetime.now(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z")
+
+
 class Scout:
     """Everything the protocol exposes. Called from the aiohttp loop only; device threads just
     leave snapshots behind."""
@@ -51,6 +56,7 @@ class Scout:
         self.seq = 0
         self.t0 = time.monotonic()
         self.run_started_t = 0
+        self.run_started_at = _utc_now()   # wall clock for started_t, so an uploader can place the run in time
         self.buffer = deque()       # run log frames; telemetry at 2 Hz, one map, events never dropped
         self.pending = []           # event frames waiting for the next broadcast
         self.clients = set()
@@ -110,6 +116,7 @@ class Scout:
                     self.reset_map()
                     self.run = {"active": True, "space": str(c.get("space", ""))}
                     self.run_started_t = self.t()
+                    self.run_started_at = _utc_now()
                     self.emit({"kind": "run_start"})
                 elif c.get("action") == "stop":
                     self.emit({"kind": "run_stop"})
@@ -193,7 +200,7 @@ class Scout:
 
     def run_log(self):
         header = {"type": "run", "space": self.run["space"], "fw": self.fw(),
-                  "started_t": self.run_started_t, "config": dict(self.cfg)}
+                  "started_t": self.run_started_t, "started_at": self.run_started_at, "config": dict(self.cfg)}
         return "\n".join(json.dumps(x) for x in [header, *self.buffer]) + "\n"
 
     # ---- looking at what is in front ----

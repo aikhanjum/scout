@@ -48,7 +48,7 @@ export type Frame = Telem | ScoutEvent | MapFrame;
 
 export interface Config { width_limit_mm: number; robot_width_mm: number; wall_target_mm: number; cruise: number }
 
-export interface RunHeader { type: 'run'; space: string; fw: string; started_t: number; config?: Partial<Config> }
+export interface RunHeader { type: 'run'; space: string; fw: string; started_t: number; started_at?: string; config?: Partial<Config> } // started_at: ISO 8601 UTC wall clock of started_t (v2.1, absent in older files)
 
 export type Command =
   | { cmd: 'drive'; v: number; w: number }

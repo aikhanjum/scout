@@ -12,6 +12,7 @@ let ws: WebSocket | null = null;
 let generation = 0; // bumped by every connect(); callbacks from an older generation are ignored
 let watchdog = 0, reconnectTimer = 0, replayTimer = 0;
 let rec: Frame[] | null = null;
+let recStartedAt = ''; // wall clock when REC was pressed: the run header's started_at
 let recLastMap = -Infinity;
 
 const store = () => useStore.getState();
@@ -37,7 +38,7 @@ export function sendConfig() {
   send({ cmd: 'config', width_limit_mm: widthRule(rules)?.limit ?? 860 });
 }
 
-export function startRecording() { rec = []; recLastMap = -Infinity; store().set({ recording: true }); }
+export function startRecording() { rec = []; recStartedAt = new Date().toISOString(); recLastMap = -Infinity; store().set({ recording: true }); }
 
 // Returns the recording as NDJSON (PROTOCOL.md section 7), or null if there was nothing.
 export function stopRecording(space: string): string | null {
@@ -46,7 +47,7 @@ export function stopRecording(space: string): string | null {
   if (!frames?.length) return null;
   const { detail, rules } = store();
   const header: RunHeader = {
-    type: 'run', space, fw: detail || 'unknown', started_t: frames[0].t,
+    type: 'run', space, fw: detail || 'unknown', started_t: frames[0].t, started_at: recStartedAt,
     config: { width_limit_mm: widthRule(rules)?.limit ?? 860 },
   };
   return [header, ...frames].map((x) => JSON.stringify(x)).join('\n') + '\n';

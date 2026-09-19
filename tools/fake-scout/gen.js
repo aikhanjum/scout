@@ -113,7 +113,7 @@ const route = [
 let seed = 7;
 const jitter = () => ((seed = (seed * 1664525 + 1013904223) >>> 0) / 2 ** 32) - 0.5;
 const SPEED = 420;                       // mm/s at cruise 0.4
-const lines = [{ type: 'run', space: SPACE, fw: 'fake-0.2.0', started_t: T0, config: CONFIG }];
+const lines = [{ type: 'run', space: SPACE, fw: 'fake-0.2.0', started_t: T0, started_at: '2026-09-19T12:00:00.000Z', config: CONFIG }];
 let t = T0, seq = 0, lastMap = -Infinity;
 const pending = [];                      // events to flush at the end of the current dwell
 

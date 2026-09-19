@@ -171,13 +171,14 @@ Rules:
 One JSON object per line. Line 1 is the header. Every other line is a frame exactly as it went over `/ws`.
 
 ```
-{"type":"run","space":"E5 room 2024","fw":"pi 0.2.0 / esp32 0.2.0","started_t":5000000,"config":{"width_limit_mm":860,"robot_width_mm":260,"wall_target_mm":300,"cruise":0.4}}
+{"type":"run","space":"E5 room 2024","fw":"pi 0.2.0 / esp32 0.2.0","started_t":5000000,"started_at":"2026-09-19T19:04:11.250Z","config":{"width_limit_mm":860,"robot_width_mm":260,"wall_target_mm":300,"cruise":0.4}}
 {"type":"telem", ...}
 {"type":"map", ...}
 {"type":"event", ...}
 ```
 
 - `GET /runs/latest` returns the current buffer: every event, telemetry decimated to 2 Hz, and **only the most recent `map` frame**, written in place. The buffer holds at least 5 minutes. Events are never dropped; old telemetry is dropped first.
+- `started_at` is the wall clock (ISO 8601, UTC) at which `t` was `started_t`, so a frame's real time is `started_at + (t - started_t)` ms. Files written before v2.1 do not have it; a consumer falls back to the file's modification time as the end of the run.
 - A replay that contains no `map` frame shows an empty map. The dashboard's recorder keeps one map frame per 10 s so a recorded run replays with the map filling in.
 - The dashboard records everything it receives on `/ws` into the same format and can save it as a file.
 - `tools/fake-scout` serves any such file as if it were live. The dashboard's replay mode plays any such file with no server. Both time frames by `t` deltas.
@@ -206,6 +207,17 @@ Not on the wire, but a contract between whoever edits the files and the dashboar
 
 `data/spaces.json` is gone. In v1 it held hand-measured building checkpoints for a viewer that no longer exists; Scout now produces its own map and its own findings at run time, and a saved run (section 7) is the record of a space. Nothing reads a spaces file.
 
+`data/history.json` (written by `tools/upload-run`, read by the dashboard's "Room over time" panel; absent means the panel is off):
+
+```json
+{"generated_at":"2026-09-19T20:10:00Z","bucket":"1 hour","includes_simulated":false,
+ "spaces":[{"space":"E5 corridor","buckets":[
+   {"start":"2026-09-19T19:00:00Z","runs":1,"frames":660,"min_clearance_mm":504,"fails":2,"empty_share":0.03}]}]}
+```
+
+- One entry per space, one bucket per `time_bucket` of run time. `min_clearance_mm` is the narrowest valid clearance in the bucket (`null` if none was valid), `fails` counts `*_fail` events, `empty_share` is the fraction of lidar samples with no return.
+- Runs whose `fw` starts with `fake` are simulated. They are never in this file unless it was generated with `--simulated`, and then `includes_simulated` says so.
+
 ## 9. Pi to ESP32 serial contract
 
 USB serial, 115200 baud, 8N1, one message per line (`\n`). The Pi finds the port by probing every USB serial device for the ESP32's JSON lines, never by `/dev/ttyUSB0`.
@@ -233,6 +245,8 @@ ESP32 to Pi, JSON lines:
 - Opening the port resets the ESP32 (DTR). It reboots in about a second, prints `hello`, and streams. The Pi tolerates the bootloader's non-JSON lines.
 
 ## Changelog
+
+v2.1, 2026-09-19: `started_at` added to the run header (section 7) and `data/history.json` defined (section 8). Additive, `proto` stays 2.
 
 v2, 2026-09-19: no IMU. The lidar maps, the camera names, Scout roams on its own.
 

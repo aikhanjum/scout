@@ -126,3 +126,4 @@ html[data-view="tiger"] body { margin: 0; background: #0b0d10; background-image:
 .term .tp .head { height: 17px; padding-bottom: 0; margin-bottom: 1px; }
 .term .tp .head .t { display: none; }
 .term .tp .row .big { font-size: 13px; }
+.term .tp .row { display: flex; grid-template-columns: none; padding: 0; border-bottom: 0; line-height: 15px; }

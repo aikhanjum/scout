@@ -36,3 +36,8 @@ Dark, dense, default monospace (`ui-monospace, Menlo, Consolas, monospace`), no 
 
 ## Verification per worktree
 `cd mission-control && npm install && npx tsc --noEmit && npm run build`. To see data: `PORT=8090 npm run fake` (repo root) and pick "Live: other address…" -> `ws://localhost:8090/ws`, or `?view=...` with the replay source. Commit on your branch with a clear message; do not push; do not touch main.
+
+## Shared pieces added after the stubs (do not edit; import them)
+- `mission-control/src/palette.ts`: `C` (the colours above) and `distanceColour(mm)` (red 400 → amber 860 → green 2000 → blue 5000, RGB blend). Every view colours distance with it.
+- `mission-control/src/Tabs.tsx`: `<Tabs />`, the four-screen switcher. Put it in your screen's header.
+- `App.tsx` sets `document.documentElement.dataset.view` to `terminal|map|tiger|eye`. Scope page-level styles as `html[data-view="terminal"] body { margin: 0; background: #0b0d10 }`. `style.css` stays Quaden's light theme for the Inferred position tab.

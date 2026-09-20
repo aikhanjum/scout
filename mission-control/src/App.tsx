@@ -34,6 +34,8 @@ export function useView(): View {
 
 export function App() {
   const view = useView();
+  // Lets each screen's stylesheet set the page background: html[data-view="terminal"] body { ... }
+  useEffect(() => { document.documentElement.dataset.view = view; }, [view]);
   if (view === 'eye') return <EyeView />;
   if (view === 'map') return <MapTab />;
   if (view === 'tiger') return <TigerTab />;

@@ -1,0 +1,53 @@
+/* Radar tile, QR tile and the Inferred position tab header. Terminal look: dark, dense, mono,
+   square corners. Colours are palette.ts written out, because CSS cannot import them. */
+
+/* --- radar: a square canvas centred in whatever box it is given --- */
+.radar { position: relative; width: 100%; height: 100%; min-height: 280px; display: grid; place-items: center; overflow: hidden; background: #12151a; color: #d7dde5; font: 11px/1.2 var(--mono); }
+.radar-sq { position: relative; }
+.radar-sq canvas { display: block; }
+.radar .rd { position: absolute; margin: 0; padding: 4px 6px; color: #8a939e; font-size: 11px; letter-spacing: .04em; white-space: nowrap; pointer-events: none; }
+.radar .rd b { color: #d7dde5; font-weight: 600; }
+.radar .tl { top: 0; left: 0; display: grid; gap: 3px; justify-items: start; }
+.radar .tr { top: 0; right: 0; display: grid; gap: 3px; justify-items: end; }
+.radar .bl { bottom: 0; left: 0; }
+.radar .br { bottom: 0; right: 0; }
+.radar .tiny { font-size: 9px; }
+.radar .rtag { display: inline-block; margin-right: 4px; padding: 1px 5px; border: 1px solid currentColor; border-radius: 2px; font-size: 10px; font-weight: 600; letter-spacing: .08em; }
+.radar .amber { color: #e9b74f; }
+.radar .blue { color: #4da3ff; }
+.radar .msg { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); padding: 3px 8px; background: #12151a; border: 1px solid currentColor; color: #8a939e; font-size: 12px; font-weight: 600; letter-spacing: .1em; white-space: nowrap; pointer-events: none; }
+.radar .msg.red { color: #e0443e; }
+
+/* --- qr: label, the code filling the middle, the host underneath --- */
+.qr { display: flex; flex-direction: column; gap: 6px; width: 100%; height: 100%; min-height: 200px; padding: 8px; box-sizing: border-box; background: #12151a; color: #d7dde5; font: 11px/1.3 var(--mono); }
+.qr-label { color: #8a939e; letter-spacing: .06em; text-transform: uppercase; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.qr-label b { color: #d7dde5; font-weight: 600; }
+.qr-box { flex: 1 1 auto; min-height: 0; display: grid; place-items: center; }
+.qr-box canvas { display: block; }
+.qr-off { color: #8a939e; letter-spacing: .06em; text-align: center; }
+.qr-host { color: #8a939e; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* --- inferred position tab: a terminal header over Quaden's light sheet. Scoped to the tab so
+   style.css keeps the body light. --- */
+html[data-view="map"] .maptab-head { display: flex; align-items: center; gap: 14px; height: 28px; padding: 0 12px; background: #0b0d10; color: #d7dde5; border-bottom: 1px solid #262b33; font-family: var(--mono); font-size: 11px; }
+html[data-view="map"] .maptab-brand { color: #e9b74f; font-weight: 700; font-size: 12px; letter-spacing: .14em; }
+html[data-view="map"] .maptab-head .tabs { display: flex; align-items: stretch; height: 28px; gap: 2px; }
+html[data-view="map"] .maptab-head .tab { height: 28px; padding: 0 10px; border: 0; border-bottom: 2px solid transparent; border-radius: 0; background: transparent; color: #8a939e; font: 600 11px/1 var(--mono); letter-spacing: .08em; text-transform: uppercase; transition: none; transform: none; }
+html[data-view="map"] .maptab-head .tab:hover { color: #d7dde5; background: #12151a; }
+html[data-view="map"] .maptab-head .tab.on { color: #d7dde5; border-bottom-color: #e9b74f; }
+html[data-view="map"] .maptab-head .status { gap: 8px; }
+html[data-view="map"] .maptab-head .tag { height: 18px; padding: 0 6px; background: transparent; border-color: currentColor; font-size: 10px; }
+html[data-view="map"] .maptab-head .tag.bad { color: #e0443e; }
+html[data-view="map"] .maptab-head .tag.warn { color: #e9b74f; }
+html[data-view="map"] .maptab-head .tag.good { color: #3ddc84; }
+html[data-view="map"] .maptab-head .tag.plain { color: #8a939e; }
+html[data-view="map"] .maptab-head .detail { color: #8a939e; font-size: 11px; }
+html[data-view="map"] .maptab-head .source { gap: 10px; margin-left: auto; }
+html[data-view="map"] .maptab-head .field { color: #8a939e; font-size: 11px; }
+html[data-view="map"] .maptab-head .field.check { padding: 0 2px; }
+html[data-view="map"] .maptab-head select:hover { border-color: #8a939e; }
+html[data-view="map"] .maptab-head select { height: 20px; min-width: 170px; padding: 0 6px; font-size: 11px; background: #12151a; color: #d7dde5; border: 1px solid #262b33; border-radius: 2px; }
+html[data-view="map"] .maptab-head input[type="checkbox"] { accent-color: #e9b74f; margin: 0; }
+html[data-view="map"] .maptab-banner { margin: 14px 20px 0; padding: 10px 14px; background: var(--brand-soft); border: 1px solid #dcc27c; border-radius: 2px; color: var(--brand-ink); font: 500 13px/1.5 var(--mono); }
+html[data-view="map"] .maptab-banner b { font-weight: 700; letter-spacing: .06em; }
+html[data-view="map"] .maptab-body { display: grid; gap: 16px; padding: 16px 20px 32px; }

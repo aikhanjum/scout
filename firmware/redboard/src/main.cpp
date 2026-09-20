@@ -51,8 +51,15 @@ const uint8_t M_PWM[4] = {PWM_M1, PWM_M2, PWM_M3, PWM_M4};
 // symptom is exactly what it looks like: "forward" turns some wheels forward and others backward.
 // Flip the offending motor to -1 here and nowhere else; the protocol's sign convention is fixed.
 // Find them with the "t" self-test, which runs each motor FORWARD in turn and names it.
+// Measured on the real chassis 2026-09-19 with the "t" self-test: every motor already turns the
+// way the robot drives forward, so every sign is +1. What was wrong was the SIDES -- M1 and M2
+// are the right-hand wheels, not the left. Forward still looked fine (both sides get the same
+// duty), so the mirror only showed up on turns, with A steering right and D steering left.
+//
+//   M1 front right      M3 front left
+//   M2 back right       M4 back left
 const int8_t M_SIGN[4] = { +1, +1, +1, +1 };            // M1, M2, M3, M4
-const bool   M_LEFT[4] = { true, true, false, false };  // M1+M2 left, M3+M4 right
+const bool   M_LEFT[4] = { false, false, true, true };  // M3+M4 left, M1+M2 right
 
 const unsigned long WATCHDOG_MS = 600;
 const int DUTY_FLOOR = 70;

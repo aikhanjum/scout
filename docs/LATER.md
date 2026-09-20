@@ -21,7 +21,8 @@ Everything cut from the plan, with the reason. New ideas go here, not in code. N
 - **Phone remote page `GET /`**: S2 in SPEC.md if time. Would be a static page served by the Pi.
 - **Bumper reflex, stuck detection, `bump` and `stuck` telemetry**: keys reserved, always `[0,0]` / `false`.
 - **Front-distance obstacle stop**: the lidar sees ahead now; a "stop if anything is under 250 mm ahead while driving forward" rule is 10 lines in `pi/scout/server.py` and worth doing before the phone rides on Scout.
-- **Wheel encoders and true SLAM**: no odometry by design. Position comes from fitting the room's rectangle in each A2M8 scan (`docs/SPEC.md`), which is why Scout maps one rectangular room at a time.
+- **Wheel encoders**: no odometry by design.
+- ~~**True SLAM**~~: **uncut on 2026-09-19 and now the default.** `pi/scout/slam.py` matches each scan against the map so far, so Scout is no longer confined to one rectangular room. Still cut, and still listed here: **loop closure**, which is what stops the drift accumulating over a long run. Hector SLAM has none either. `pi/scout/pose.py` stays as `SCOUT_POSE=rect` and stays the better answer inside a closed rectangle.
 
 ## Cut on 2026-09-19 after the lidar went in
 

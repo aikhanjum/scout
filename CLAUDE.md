@@ -16,7 +16,12 @@ RedBoard (motors, 600 ms watchdog)  <-- USB serial -->  Pi 4 (RPLIDAR A2M8, came
 
 There is no Hub. The dashboard talks to the Pi directly. The fake Scout and any replay file are interchangeable with the real robot. Development happens on the Mac with the motor board and the lidar plugged in by USB; the Pi service is copied to the Pi unchanged.
 
-Position has no sensor behind it: there is no odometry and no IMU. `pi/scout/pose.py` fits the rectangle of the room in every scan and reads position and heading off it, which is why the test space must be one rectangular room.
+Position has no sensor behind it: there is no odometry and no IMU. There are two ways to get it and `SCOUT_POSE` picks one:
+
+- **`slam` (the default)** — `pi/scout/slam.py` matches each scan against the map built so far, the way Hector SLAM does. Works in any shape of space, and **it drifts**: there is no loop closure, so error accumulates over a run. Reports `room: null`, and the map is drawn on a fixed canvas with the starting point at its centre. Needs numpy; without it the service falls back to `rect` and says so loudly.
+- **`rect`** — `pi/scout/pose.py` fits the rectangle of the room in every scan and reads position and heading off it. Cannot drift, but needs one closed rectangular room and nothing else.
+
+Measured on `data/runs/room-scan.ndjson` (660 scans, ground truth in every frame): slam holds pose on 100% of scans at 18 mm median error and ends the run 17 mm out. The rect fit manages 2.0 mm median in the rooms it can handle. **Quote the drift, not the 2 mm, whenever slam is the engine.**
 
 ## Workstreams and owners
 
@@ -45,6 +50,8 @@ npm run dash                                   # or: cd mission-control && npm i
 cd pi && python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 .venv/bin/python -m scout                      # :8080. SCOUT_MOTOR_PORT / SCOUT_LIDAR_PORT override discovery ("none" disables)
 .venv/bin/python tools/fake_redboard.py        # a fake RedBoard on a pty, for testing without hardware
+.venv/bin/python tools/check_slam.py           # replay the recorded run through slam, scored against its ground truth
+SCOUT_POSE=rect .venv/bin/python -m scout      # the rectangle fitter instead of slam
 python pi/tools/make_clip_labels.py             # on a LAPTOP: build pi/models/ for camera labels
 
 # motor firmware: 06_serial_drive.ino on the RedBoard, flashed from the Arduino IDE (owner: Aidan).
@@ -90,7 +97,7 @@ data/rules.json         the width limit, its rule text and source, and the camer
 ## Claude Code notes
 
 - Read `docs/PROTOCOL.md` before touching code that sends or receives frames or serial lines. Match the keys exactly.
-- Pi service: Python 3.9+, pyserial + aiohttp only. Camera labelling additionally wants `onnxruntime`, `numpy`, `Pillow` and `picamera2`, and degrades to "unknown" without any of them. `pi/scout/rplidar.py` is vendored from `~/dev/lidar-gaps` (not a git repo); edit there first. Threads for the two serial devices, asyncio for the server, immutable snapshots instead of locks.
+- Pi service: Python 3.9+, pyserial + aiohttp, and numpy for `slam.py` only (without it the service falls back to `SCOUT_POSE=rect`). Camera labelling additionally wants `onnxruntime`, `numpy`, `Pillow` and `picamera2`, and degrades to "unknown" without any of them. `pi/scout/rplidar.py` is vendored from `~/dev/lidar-gaps` (not a git repo); edit there first. Threads for the two serial devices, asyncio for the server, immutable snapshots instead of locks.
 - `pose.py` and `mapping.py` are the load-bearing algorithms and both have real failure modes documented in their docstrings. Test changes against a recorded run before the robot: `data/runs/room-scan.ndjson` carries 660 scans with ground-truth poses in every frame.
 - Firmware: the board is a SparkFun RedBoard (ATmega328P) running `06_serial_drive.ino`, owned by the firmware workstream and flashed from the Arduino IDE. It drives the shield's SN74HC595 directly with no library; do not reintroduce one. `firmware/` still holds the unused ESP32 bridge. The Pi never sees the difference: `pi/scout/redboard.py` is the only file that knows the board's dialect.
 - Dashboard: Vite + React + TypeScript, `zustand`, and a plain 2D canvas for the map. No three.js, no GLB. Chrome only. Vite `publicDir` is `../data`.

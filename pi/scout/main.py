@@ -18,6 +18,28 @@ from .wallfollow import WallFollow
 log = logging.getLogger("scout")
 
 
+def _pose_engine():
+    """Slam or the rectangle fitter, whichever SCOUT_POSE asks for (config.POSE_MODE).
+
+    Slam needs numpy. A missing library disables its own feature and says so loudly rather than
+    taking the service down with it (rule 9), and here the fallback is a fitter that works, so the
+    only thing lost is rooms that are not rectangles.
+    """
+    if config.POSE_MODE == "rect":
+        log.info("POSE: rectangle fit (SCOUT_POSE=rect). One closed rectangular room, no drift.")
+        return Pose()
+    try:
+        from .slam import Slam
+    except ImportError as e:
+        log.error("POSE: numpy is missing (%s), so slam cannot run. Falling back to the rectangle "
+                  "fit, which needs one closed rectangular room. pip install numpy", e)
+        return Pose()
+    log.info("POSE: slam, scan matching against the map so far. Any room shape, and it drifts: "
+             "check the map against a tape measure before trusting it. SCOUT_POSE=rect for the "
+             "rectangle fit instead.")
+    return Slam(span_mm=config.MAP_SPAN_MM)
+
+
 def _labels():
     """The label set the camera scores against lives in data/rules.json (PROTOCOL.md section 8),
     so changing what Scout can name is a data edit, not a code change."""
@@ -64,7 +86,7 @@ def main():
         log.warning("CAMERA DISABLED (SCOUT_CAMERA=none): obstacles will be reported as 'unknown'")
 
     cfg = dict(config.CONFIG)
-    scout = Scout(motor, lidar, camera, Pose(), Grid(), Audit(cfg), WallFollow(cfg), cfg)
+    scout = Scout(motor, lidar, camera, _pose_engine(), Grid(), Audit(cfg), WallFollow(cfg), cfg)
     log.info("serving http://%s:%d  ws://%s:%d/ws  (also localhost)", _ip(), config.PORT, _ip(), config.PORT)
     try:
         web.run_app(make_app(scout), host="0.0.0.0", port=config.PORT, print=None, access_log=None)

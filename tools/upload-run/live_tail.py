@@ -147,6 +147,7 @@ class Tail(threading.Thread):
         self.round, self.slow, self.cache = 0, {}, {}
         self.flush_ms = self.rows_last = 0
         self.last_flush_at = 0.0
+        self.keep, self.n_frames = 1, 0      # keep every keep-th frame's beams; 1 = everything
         self.stats_fn = "hypertable_columnstore_stats"   # main() checks which one this server has
 
     # -- called from the websocket task
@@ -155,6 +156,11 @@ class Tail(threading.Thread):
         events, telem, scans = rows_for([frame], self.s.run_id, self.s.space, self.s.simulated, now, frame.get("t"))
         if not (events or telem):
             return
+        # link-limited mode: when a flush takes longer than the second it covers (a phone hotspot at a
+        # hackathon), keep the beams of every keep-th frame only. Telemetry and events always go.
+        self.n_frames += 1
+        if self.keep > 1 and self.n_frames % self.keep:
+            scans = []
         with self.lock:
             self.buf.append((events, telem, scans))
             self.frames_buffered += bool(telem)
@@ -233,6 +239,11 @@ class Tail(threading.Thread):
         now = time.time()
         self.rows_last = round((len(scans) + len(telem) + len(events)) / max(now - (self.last_flush_at or t0), 1.0))
         self.last_flush_at = now
+        # adapt: slower than real time -> keep fewer frames; comfortably faster -> keep more again
+        if self.flush_ms > 1500:
+            self.keep = min(self.keep * 2, 16)
+        elif self.flush_ms < 400 and self.keep > 1:
+            self.keep //= 2
 
     # -- stats: each query timed; one that took over SLOW_MS runs every fifth round and its value is reused between
     def q(self, name, sql, params=None):
@@ -276,7 +287,7 @@ class Tail(threading.Thread):
         return {"updated_at": iso(utcnow()), "db_ok": not error, "error": error, "run_id": s.run_id, "space": s.space, "fw": s.fw,
                 "simulated": s.simulated, "ws_ok": self.ws_ok, "rows_session": self.n_scan + self.n_telem + self.n_events,
                 "rows_per_s": self.rows_last, "flush_ms": self.flush_ms, "buffered": self.buffered(), "dropped": self.dropped,
-                "direct_compress": self.direct_compress, **stats}
+                "direct_compress": self.direct_compress, "keep": self.keep, **stats}
 
     def run(self):
         next_at = time.time() + FLUSH_EVERY

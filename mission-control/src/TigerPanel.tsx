@@ -6,7 +6,7 @@ import './tiger.css';
 export interface TigerAgg { name: string; real_time: boolean; rows: number }
 export interface TigerJson {
   updated_at: string; db_ok: boolean; error: string;
-  rows_total: number; rows_session: number; rows_per_s: number;
+  rows_total: number; rows_session: number; rows_per_s: number; keep?: number;
   on_disk_bytes: number; raw_bytes_est: number; ratio: number;
   last_second: { frames: number; min_clearance_mm: number | null; empty_share: number } | null;
   events_total: number;
@@ -122,7 +122,7 @@ export function TigerPanel() {
       <div className="row head"><span className="t">Tiger Data</span><span className="r"><StatusTags t={t} now={now} /></span></div>
       {d ? (
         <>
-          <Row k="rows"><span className="big">{fmtInt(rows)}</span><span className="sep">·</span><span className="dim">{stale ? 'stalled' : `+${fmtInt(d.rows_per_s)}/s`}</span><span className="sep">·</span>session {fmtInt(d.rows_session)}</Row>
+          <Row k="rows"><span className="big">{fmtInt(rows)}</span><span className="sep">·</span><span className="dim">{stale ? 'stalled' : `+${fmtInt(d.rows_per_s)}/s`}</span>{(d.keep ?? 1) > 1 && <><span className="sep">·</span><span className="amber">1 in {d.keep} frames, link-limited</span></>}<span className="sep">·</span>session {fmtInt(d.rows_session)}</Row>
           <Row k="on disk"><span className="big">{fmtBytes(d.on_disk_bytes)}</span><span className="sep">·</span><span className="dim">raw ~{fmtBytes(d.raw_bytes_est)}</span><span className="sep">·</span><span className="green">{d.ratio.toFixed(1)}x smaller</span></Row>
           <Row k="last 1 s">
             {d.last_second

@@ -25,7 +25,12 @@ const DEFAULT_URL = 'ws://localhost:8080/ws';
   useStore.getState().set({ rules: await loadJson<never>('/rules.json') });
   let url = DEFAULT_URL;
   try { url = localStorage.getItem('scout.url') ?? DEFAULT_URL; } catch { /* private window etc. */ }
-  connect({ kind: 'live', url });
+  // ?run=<file> replays data/runs/<file> on any screen; ?ws=<url> picks a live robot. A QR code
+  // or a rehearsal link can carry either.
+  const q = new URLSearchParams(location.search);
+  const run = q.get('run');
+  if (run) connect({ kind: 'replay', name: run });
+  else connect({ kind: 'live', url: q.get('ws') ?? url });
 })();
 
 createRoot(document.getElementById('root')!).render(

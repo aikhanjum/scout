@@ -76,7 +76,7 @@ export function Terminal() {
   return (
     <div className="term">
       <header className="th">
-        <span className="brand">SCOUT<small>MISSION CONTROL</small></span>
+        <span className="brand">SCOUT</span>
         <span className="sep">|</span>
         <Tabs />
         <span className="sep">|</span>
@@ -224,10 +224,10 @@ function HealthTile() {
         <span className="k">Nearest</span><span className="v" style={st && st.near ? { color: distanceColour(st.near) } : undefined}>{st && st.nearI >= 0 ? `${st.near} mm @ ${bearingAt(st.nearI)}` : dash}</span>
         <span className="k">Farthest</span><span className="v">{st && st.farI >= 0 ? `${st.far} mm @ ${bearingAt(st.farI)}` : dash}</span>
         <span className="k">Median</span><span className="v">{st ? mm(st.median) : dash}</span>
-        <span className="k">Near F/L/B/R</span>
         <span className="v quad">
+          <span className="k">Nearest per quadrant</span>
           {(['F', 'L', 'B', 'R'] as Quad[]).map((k) => (
-            <span key={k} style={st && st.q[k] ? { color: distanceColour(st.q[k]) } : undefined}><b>{k}</b>{st && st.q[k] ? st.q[k] : dash}</span>
+            <span key={k} style={st && st.q[k] ? { color: distanceColour(st.q[k]) } : undefined}><b>{k}</b>{st && st.q[k] ? `${st.q[k]} mm` : dash}</span>
           ))}
         </span>
       </div>

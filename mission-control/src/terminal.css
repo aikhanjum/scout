@@ -9,7 +9,7 @@ html[data-view="terminal"] body { margin: 0; background: #0b0d10; color: #d7dde5
   --amber: #e9b74f; --red: #e0443e; --green: #3ddc84; --blue: #4da3ff;
   position: fixed; inset: 0; display: flex; flex-direction: column; overflow: hidden;
   background: var(--bg); color: var(--fg);
-  font: 12px/1.35 ui-monospace, Menlo, Consolas, monospace; font-variant-numeric: tabular-nums;
+  font-family: var(--mono); font-size: 12px; line-height: 1.35; font-variant-numeric: tabular-nums;
 }
 .term *, .term *::before, .term *::after { box-sizing: border-box; }
 .term button { font: inherit; transform: none; }
@@ -26,7 +26,6 @@ html[data-view="terminal"] body { margin: 0; background: #0b0d10; color: #d7dde5
 /* ---- header, 28 px ---- */
 .term .th { flex: 0 0 28px; height: 28px; display: flex; align-items: center; gap: 10px; padding: 0 8px; background: var(--panel); border-bottom: 1px solid var(--rule); white-space: nowrap; overflow: hidden; }
 .term .th .brand { color: var(--amber); font-weight: 600; letter-spacing: .14em; }
-.term .th .brand small { color: var(--dim); font-weight: 400; font-size: 10px; letter-spacing: .12em; margin-left: 8px; }
 .term .th .sep { color: var(--rule); }
 .term .th .clock { margin-left: auto; color: var(--dim); font-size: 11px; letter-spacing: .04em; }
 .term .th .clock b { color: var(--fg); font-weight: 400; margin-right: 8px; }
@@ -71,7 +70,8 @@ html[data-view="terminal"] body { margin: 0; background: #0b0d10; color: #d7dde5
 .term .kv .v { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 .term .kv .wide { grid-column: 2 / -1; }
 .term .kv .full { grid-column: 1 / -1; }
-.term .quad { display: flex; gap: 12px; }
+.term .quad { grid-column: 1 / -1; display: flex; gap: 14px; }
+.term .quad .k { margin-right: 2px; }
 .term .quad span b { font-weight: 400; color: var(--dim); margin-right: 4px; font-size: 10px; }
 
 /* CLEARANCE */
@@ -123,25 +123,27 @@ html[data-view="terminal"] body { margin: 0; background: #0b0d10; color: #d7dde5
 .term .pad .key.on, .term .pad .key.on:hover { background: var(--amber); border-color: var(--amber); color: var(--bg); }
 .term .pad .mid { display: flex; align-items: center; justify-content: center; color: var(--rule); font-size: 10px; }
 .term .drive.off .pad { opacity: .3; pointer-events: none; }
-.term .drive .btns { display: flex; gap: 4px; }
-.term .drive .btns button { flex: 1 1 0; height: 24px; padding: 0; border: 1px solid; border-radius: 2px; background: var(--bg); font-size: 10px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; cursor: pointer; user-select: none; transition: background 60ms linear, color 60ms linear; }
-.term .estop, .term .estop:hover { color: var(--red); border-color: var(--red); background: var(--bg); }
-.term .estop.on, .term .estop.on:hover, .term .estop:active { color: var(--bg); background: var(--red); }
-.term .roam, .term .roam:hover { color: var(--dim); border-color: var(--rule); background: var(--bg); }
-.term .roam:hover { border-color: var(--dim); color: var(--fg); }
-.term .roam.on, .term .roam.on:hover { color: var(--bg); background: var(--green); border-color: var(--green); }
+.term .btns { display: flex; gap: 4px; }
+.term .btns > button { flex: 1 1 0; height: 24px; padding: 0; border: 1px solid; border-radius: 2px; background: var(--bg); font-size: 10px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; cursor: pointer; user-select: none; transition: background 60ms linear, color 60ms linear; }
+.term .btns > button:disabled { opacity: .35; cursor: default; }
+.term .btns .estop, .term .btns .estop:hover { color: var(--red); border-color: var(--red); background: var(--bg); }
+.term .btns .estop.on, .term .btns .estop.on:hover, .term .btns .estop:active { color: var(--bg); background: var(--red); }
+.term .btns .roam, .term .btns .roam:hover { color: var(--dim); border-color: var(--rule); background: var(--bg); }
+.term .btns .roam:hover { border-color: var(--dim); color: var(--fg); }
+.term .btns .roam.on, .term .btns .roam.on:hover { color: var(--bg); background: var(--green); border-color: var(--green); }
 .term .drive .hint { margin-top: 4px; font-size: 10px; letter-spacing: .08em; text-transform: uppercase; color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .term .drive.off .hint.first { color: var(--amber); }
 
 /* ROOM OVER TIME: History.tsx's own markup (.sheet.history / .hist), restyled here */
-.term .hist-wrap > .sheet { width: 100%; height: 100%; overflow: auto; border: 0; border-radius: 0; background: transparent; }
+.term .hist-wrap > .sheet { width: 100%; height: 100%; overflow-y: auto; overflow-x: hidden; border: 0; border-radius: 0; background: transparent; }
 .term .sheet-head { min-height: 0; padding: 1px 6px; gap: 8px; border-bottom: 1px solid var(--rule); background: transparent; }
 .term .sheet-head h2 { display: none; }
 .term .meta { font-size: 10px; letter-spacing: .1em; text-transform: uppercase; color: var(--dim); }
 .term .sheet-head .tag { display: inline-flex; align-items: center; height: 14px; padding: 0 5px; border: 1px solid var(--amber); border-radius: 2px; background: transparent; color: var(--amber); font: inherit; font-size: 9px; font-weight: 600; letter-spacing: .12em; text-transform: uppercase; gap: 0; }
-.term .hist { width: 100%; border-collapse: collapse; font-size: 11px; }
-.term .hist th { padding: 1px 6px; border-bottom: 1px solid var(--rule); text-align: left; font-size: 10px; font-weight: 400; letter-spacing: .1em; text-transform: uppercase; color: var(--dim); white-space: nowrap; }
-.term .hist td { padding: 0 6px; border-bottom: 1px solid var(--rule); line-height: 18px; white-space: nowrap; }
+.term .hist { width: 100%; table-layout: fixed; border-collapse: collapse; font-size: 11px; }
+.term .hist th { padding: 1px 6px; border-bottom: 1px solid var(--rule); text-align: left; font-size: 10px; font-weight: 400; letter-spacing: .08em; text-transform: uppercase; color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.term .hist th:first-child { width: 40%; color: var(--fg); letter-spacing: .02em; }
+.term .hist td { padding: 0 6px; border-bottom: 1px solid var(--rule); line-height: 18px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .term .hist tr:last-child td { border-bottom: 0; }
 .term .hist .red { color: var(--red); } .term .hist .green { color: var(--green); } .term .hist .muted { color: var(--dim); }
 

@@ -29,8 +29,10 @@ const DEFAULT_URL = 'ws://localhost:8080/ws';
   // or a rehearsal link can carry either.
   const q = new URLSearchParams(location.search);
   const run = q.get('run');
+  const ws = q.get('ws');
+  if (ws) try { localStorage.setItem('scout.url', ws); } catch { /* fine */ }   // a reload without ?ws= keeps the robot
   if (run) connect({ kind: 'replay', name: run });
-  else connect({ kind: 'live', url: q.get('ws') ?? url });
+  else connect({ kind: 'live', url: ws ?? url });
 })();
 
 createRoot(document.getElementById('root')!).render(

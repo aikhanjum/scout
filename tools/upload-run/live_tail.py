@@ -237,12 +237,15 @@ class Tail(threading.Thread):
         # rows per second of wall clock since the previous flush landed, so a slow link (a 4 s COPY over
         # a phone hotspot carries 4 s of frames) still reads as the true average rate, not a burst
         now = time.time()
-        self.rows_last = round((len(scans) + len(telem) + len(events)) / max(now - (self.last_flush_at or t0), 1.0))
+        cycle = max(now - (self.last_flush_at or t0), 1.0)          # seconds this flush had to cover
+        self.rows_last = round((len(scans) + len(telem) + len(events)) / cycle)
         self.last_flush_at = now
-        # adapt: slower than real time -> keep fewer frames; comfortably faster -> keep more again
-        if self.flush_ms > 1500:
+        # adapt on the share of the cycle the COPY itself took. A phone hotspot has a latency floor of a
+        # few seconds per flush whatever the batch size, so the absolute time says nothing; the share does.
+        share = self.flush_ms / 1000 / cycle
+        if share > 0.8:
             self.keep = min(self.keep * 2, 16)
-        elif self.flush_ms < 400 and self.keep > 1:
+        elif share < 0.4 and self.keep > 1:
             self.keep //= 2
 
     # -- stats: each query timed; one that took over SLOW_MS runs every fifth round and its value is reused between

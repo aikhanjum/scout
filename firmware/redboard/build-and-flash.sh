@@ -2,14 +2,14 @@
 # Build src/main.cpp and flash it to the RedBoard on the Pi. Edit, run this, drive.
 #
 #   ./firmware/redboard/build-and-flash.sh            # uses PI below
-#   PI=172.20.10.9 ./firmware/redboard/build-and-flash.sh
+#   PI=172.20.10.13 ./firmware/redboard/build-and-flash.sh   # if mDNS is being flaky
 #
 # PlatformIO's CLI is not installed on this Mac, though its toolchain is, so this calls avr-g++
 # directly and links against the Arduino core archive already built under .pio/. If you ever
 # reinstall PlatformIO, "pio run" does the same job.
 set -euo pipefail
 
-PI="${PI:-172.20.10.12}"
+PI="${PI:-scout.local}"
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 T="$HOME/.platformio/packages/toolchain-atmelavr/bin"
 F="$HOME/.platformio/packages/framework-arduino-avr"

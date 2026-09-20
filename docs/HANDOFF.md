@@ -15,6 +15,14 @@ Two audiences. **Sections 1–3 are for a teammate** who has been heads-down on 
 
 `CLAUDE.md` has the rules, `docs/PROTOCOL.md` is the contract, `RUNBOOK.md` is demo day.
 
+> **Later still, position stopped needing a rectangular room.** `SCOUT_POSE=slam` is now the
+> default: Scout matches each scan against the map built so far, so a corridor, an L or two rooms
+> through a doorway all work. It **drifts**, where the rectangle fitter could not, and it has never
+> met a real lidar. The rectangle fitter is intact at `SCOUT_POSE=rect` and is still the better
+> answer inside a closed rectangle. **`docs/HANDOFF-SLAM.md` has all of it**, including which error
+> figure is honest to quote and which two are not. Section 4 below, and the room-shape rules in
+> section 1, now describe the `rect` engine specifically.
+
 > **Later the same day, the lidar met a real room for the first time and the live 2D view was
 > correct.** Two things that looked like faults were not: the "phantom" lines are the gap-chord
 > overlay, and the white flash is most likely a USB dropout (unconfirmed — one observation settles
@@ -53,13 +61,20 @@ The camera never measures anything and never decides a pass/fail. Its only job i
 
 ### How Scout gets a position without odometry or an IMU
 
+**This section describes `SCOUT_POSE=rect`, which is no longer the default. See
+`docs/HANDOFF-SLAM.md`.** It still runs, it is still validated, and it is still the better answer in
+a closed rectangular room.
+
 Nothing on the robot knows how far it has driven. Position comes out of the lidar: **fit the rectangle of the room in every scan and read position and heading straight off it.** Nothing accumulates, so nothing drifts — but it fails outright in spaces that are not closed rectangles, and then `pose` goes false and the map stops growing until it recovers.
 
 **If you consume telemetry: honour `pose: false`.** When false, `x_mm`/`y_mm`/`heading_deg` are zero and mean nothing.
 
 ### ⚠️ The room is not scenery, it is the sensor
 
-This is the single most important operational fact in the project, and it is new since the last handoff. Because pose is read off the room's rectangle, **how you build the room decides whether Scout works at all.** Three rules, in the order they bite:
+**Under `SCOUT_POSE=rect`.** Slam lifted this constraint — it needs no rectangle — but it drifts and
+it is unproven on hardware, so build the room to these rules anyway and keep both engines available.
+
+Because pose is read off the room's rectangle, **how you build the room decides whether Scout works at all.** Three rules, in the order they bite:
 
 1. **Oblong, not square.** One side at least 300 mm longer than the other. See §4 — in a square room a quarter turn is indistinguishable from no turn, and that is not fixable in software.
 2. **Closed corners.** No gaps. A gap lets the beam out and the fit is built from whatever it found in the space beyond.
@@ -82,7 +97,9 @@ This is the single most important operational fact in the project, and it is new
 | | State |
 | --- | --- |
 | Protocol v2, Pi brain, firmware, dashboard, simulator | **Done and pushed.** 33 commits on `main`. |
-| Pose / map / clearance / wall following | **Validated in simulation across 7 room shapes.** Never yet run in a real closed room. |
+| Pose, `rect` engine | **Validated in simulation across 7 room shapes**, 2.0 mm median. Never yet run in a real closed room. |
+| Pose, `slam` engine (**now the default**) | **Validated against the recorded run only**: 100% of scans, 18 mm median, 17 mm drift. Never met a real lidar. `docs/HANDOFF-SLAM.md`. |
+| Map / clearance / wall following | **Validated in simulation.** Never yet run in a real closed room. |
 | Lidar | **Works.** Adapter obtained — **not yet tested with it.** Confirmed on hand; the reservation was not denied. |
 | Motor board + firmware | **Working on the bench.** SparkFun RedBoard, `06_serial_drive.ino`, all four motors under control, watchdog verified. The ESP32 firmware in `firmware/` is superseded and is not flashed to anything. |
 | Camera / CLIP labels | **Never executed.** No Pi, no camera, no model files. Degrades to `"unknown"`. |
@@ -144,7 +161,12 @@ Say these out loud rather than letting a judge find them:
 
 ---
 
-## 4. Localisation: what the last session settled
+## 4. Localisation: what the `rect` engine settled
+
+> Everything in this section is about `SCOUT_POSE=rect`. Slam replaced it as the default afterwards
+> and is not subject to the square-room limitation below, because it does not fit a rectangle at
+> all. `docs/HANDOFF-SLAM.md`.
+
 
 The previous handoff left this as the open critical path. It is now resolved, and the resolution is **a decision about the room, not a change to the fitter.**
 

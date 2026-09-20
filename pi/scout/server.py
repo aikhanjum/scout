@@ -60,6 +60,7 @@ class Scout:
         self.buffer = deque()       # run log frames; telemetry at 2 Hz, one map, events never dropped
         self.pending = []           # event frames waiting for the next broadcast
         self.clients = set()
+        self._sending = set()           # clients with a frame still going out
         self.tick = 0
         self.led_off_at = None
         self._held = False          # motors stopped for a confirmation, until it clears
@@ -317,11 +318,23 @@ class Scout:
                 break
 
     async def broadcast(self, text):
+        # A slow client (a phone through a tunnel over cellular) must never stall this loop: the motor
+        # board's 600 ms watchdog would stop Scout mid-roam. Each client gets one send in flight, and
+        # while that one is still draining the client skips frames instead of holding everyone up.
         for ws in list(self.clients):
-            try:
-                await ws.send_str(text)
-            except Exception:
-                self.clients.discard(ws)
+            key = id(ws)
+            if key in self._sending:
+                continue
+            self._sending.add(key)
+            asyncio.ensure_future(self._send(ws, key, text))
+
+    async def _send(self, ws, key, text):
+        try:
+            await ws.send_str(text)
+        except Exception:
+            self.clients.discard(ws)
+        finally:
+            self._sending.discard(key)
 
 
 # ---- aiohttp app ----

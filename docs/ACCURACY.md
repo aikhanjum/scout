@@ -52,6 +52,19 @@ No odometry, 800 px / 20 m map, defaults, 1 ms per scan. Return-to-start on the 
 
 Conclusion for this hardware: without a motion source (wheel encoders or a gyro) no scan matcher we tried holds a position in these spaces. Position, and therefore the map, is out of scope until odometry exists. The live lidar view and the width verdict need no position and are unaffected.
 
+## Tried: heading from the walls (Manhattan lock in `slam.py`, now on by default)
+
+Each scan gives the building's axis modulo 90 degrees from its wall segments; continuity picks the quadrant; the matcher then searches rotation only within 4 degrees of that. Replayed offline on the same recordings:
+
+| | before | with the heading lock |
+| --- | --- | --- |
+| room loop, return-to-start (truth 0) | 5.25 m | 2.86 m |
+| walk 2, return-to-start (truth 0) | re-lock onto the start room | 2.90 m |
+| walk 1, return-to-start (truth 0) | 4.3 m | 2.65 m |
+| simulated run | 17 mm drift | 17 mm drift |
+
+Heading jumps over 30 degrees fell to 6 in 1258 poses and match scores are high (median 0.86), so what remains is translation sliding confidently on repetitive structure (stalls, mirrors) with half the beams empty. Stricter map stamping (only scores over 0.6) and a 1.5 degree window were tried and did not pass either (2.2 to 2.3 m). Kept on because it is strictly better and the simulation is unchanged; it does not make the map usable.
+
 ## Lidar, what it sees
 
 - Empty beams: 31% of the ring at the desk, 65% in the corridor. The clearance audit refuses a side that is more than 60% empty, so it produced a number on 100% of frames in the desk doorway and on 12% of frames along the corridor.

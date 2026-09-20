@@ -9,6 +9,10 @@ rectangular room and nowhere else. This file trades that away. It keeps a map of
 far and asks where in that map this scan fits, which works in a corridor, an L, or two rooms
 through a doorway.
 
+HEADING comes from the walls when they are visible (wall_direction, the 4-theta Manhattan trick),
+which took the real-room return-to-start error from 5.3 m to 2.9 m on 2026-09-20 -- and 2.9 m is still
+a failure. Translation still slides on repetitive structure and half-empty scans. See docs/ACCURACY.md.
+
 DRIFT IS REAL AND IT COMPOUNDS. Every match is a fraction of a cell out, and the next scan is
 matched against a map that already carries that error. There is no loop closure here -- nor in
 Hector -- so a long lap comes back to its start some centimetres from where it left. Measure it on
@@ -69,6 +73,16 @@ F_HALF_MM, F_STEP_MM, F_HALF_DEG, F_STEP_DEG = 140.0, 20.0, 3.0, 0.5
 # real difference in score.
 TIE_MM, TIE_DEG = 0.002, 0.05
 
+# Heading from the walls themselves. Indoor walls are orthogonal, so one scan alone says which way
+# the building's axes run, modulo 90 degrees; continuity between scans picks which of the four.
+# With heading pinned this way the matcher only has to find x and y, and the ties that dragged it
+# 60 to 150 degrees off in real rooms are gone. SCOUT_SLAM_MANHATTAN=0 turns it off.
+import os as _os
+MANHATTAN = _os.environ.get("SCOUT_SLAM_MANHATTAN", "1") != "0"
+MANHATTAN_MIN_CONF = 0.35  # below this the scan has no clear wall direction (a crowd, a curved room)
+M_HALF_DEG, M_STEP_DEG = 4.0, 1.0      # rotation window around the wall-derived heading, coarse
+MF_HALF_DEG, MF_STEP_DEG = 1.5, 0.5    # and fine
+
 MIN_SCORE = 0.30         # fraction of the best possible score, below which this is not a match
 FLAT_FRAC = 0.01         # the score must fall at least this much 50 mm either side of the peak
 KEY_MM, KEY_DEG = 80.0, 4.0   # integrate a scan only after this much movement, so a parked robot
@@ -105,6 +119,32 @@ def scan_xy(scan, stride=2):
     keep = d > 0
     d, a = d[keep], np.radians(a[keep])
     return d * np.cos(a), d * np.sin(a)
+
+
+def wall_direction(scan):
+    """The building's axis as seen from this scan, in degrees in [0, 90), and a confidence 0..1.
+
+    Neighbouring returns that sit close together lie on one surface; the direction of each such
+    little segment, folded onto 90 degrees with the 4-theta trick, votes with its length. A room
+    with straight walls gives a sharp answer; a crowd or a round room gives a weak one."""
+    d = np.asarray(scan, dtype=np.float64)
+    idx = np.nonzero(d > 0)[0]
+    if idx.size < 20:
+        return 0.0, 0.0
+    a = np.radians(idx)
+    x, y = d[idx] * np.cos(a), d[idx] * np.sin(a)
+    gap = np.diff(idx)
+    dx, dy = np.diff(x), np.diff(y)
+    seg = np.hypot(dx, dy)
+    near = np.minimum(d[idx][:-1], d[idx][1:])
+    ok = (gap <= 2) & (seg <= np.maximum(120.0, 0.10 * near)) & (near > 250)
+    if ok.sum() < 10:
+        return 0.0, 0.0
+    theta = np.arctan2(dy[ok], dx[ok])
+    w = seg[ok]
+    z = np.sum(w * np.exp(4j * theta))
+    conf = float(abs(z) / w.sum())
+    return float(np.degrees(np.angle(z)) / 4.0) % 90.0, conf
 
 
 def _search(arr, cell, ox, oy, x0, y0, th0, px, py, half_mm, step_mm, half_deg, step_deg):
@@ -173,6 +213,8 @@ class Slam:
         self._lost = 0
         self._held = 0
         self._kx = self._ky = self._kh = 0.0       # pose at the last scan folded into the map
+        self._wall = None         # the building's axis in the frame, set from the first scan
+        self._mh = 0.0            # heading resolved from the walls, tracked through blackouts too
 
     # ---- the map the matcher searches ----
     def _stamp(self, x, y, th, px, py):
@@ -231,16 +273,26 @@ class Slam:
             self.x = self.y = self.heading = 0.0
             self._stamp(0.0, 0.0, 0.0, px, py)
             self.ok, self.score, self._held = True, 1.0, 0
+            self._wall, self._mh = wall_direction(scan)[0], 0.0
             log.info("slam: frame started, %d x %d mm canvas at %d mm cells",
                      self.w * CELL_MM, self.h * CELL_MM, CELL_MM)
             return True
 
+        th_seed, c_half, c_step, f_half, f_step = self.heading, C_HALF_DEG, C_STEP_DEG, F_HALF_DEG, F_STEP_DEG
+        if MANHATTAN and self._wall is not None:
+            m, conf = wall_direction(scan)
+            if conf >= MANHATTAN_MIN_CONF:
+                # four headings put these walls on the building's axis; take the one nearest the last
+                base = self._wall - m
+                cands = [(base + k * 90.0 + 180.0) % 360.0 - 180.0 for k in range(4)]
+                self._mh = min(cands, key=lambda h: abs((h - self._mh + 180.0) % 360.0 - 180.0))
+                th_seed, c_half, c_step, f_half, f_step = self._mh, M_HALF_DEG, M_STEP_DEG, MF_HALF_DEG, MF_STEP_DEG
         cf, cx, cy, cth, _, _, _, _ = _search(
-            self.coarse, CELL_MM * COARSE, self.ox, self.oy, self.x, self.y, self.heading,
-            px, py, C_HALF_MM, C_STEP_MM, C_HALF_DEG, C_STEP_DEG)
+            self.coarse, CELL_MM * COARSE, self.ox, self.oy, self.x, self.y, th_seed,
+            px, py, C_HALF_MM, C_STEP_MM, c_half, c_step)
         frac, x, y, th, on_edge, surf, ti, tj = _search(
             self.fine, CELL_MM, self.ox, self.oy, cx, cy, cth,
-            px, py, F_HALF_MM, F_STEP_MM, F_HALF_DEG, F_STEP_DEG)
+            px, py, F_HALF_MM, F_STEP_MM, f_half, f_step)
 
         why = None
         if frac < MIN_SCORE:

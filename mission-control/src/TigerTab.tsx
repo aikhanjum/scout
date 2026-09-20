@@ -221,7 +221,7 @@ function Pipe({ d, rows, live }: { d: TigerJson; rows: number; live: boolean }) 
     ['RPLIDAR A2M8', '360 beams per turn'],
     ['lidar frames', `${frames} frames/s × 360 beams`],
     ['/ws', 'protocol v2, 10 Hz telem'],
-    ['live_tail.py', `+${fmtInt(d.rows_per_s)} rows/s`],
+    ['live_tail.py', live ? `+${fmtInt(d.rows_per_s)} rows/s` : 'not running'],
     ['COPY', `direct compress ${d.direct_compress ? 'ON' : 'OFF'}`],
     ['hypertable scan', `${fmtInt(rows)} rows`],
     ['columnstore', `${d.ratio.toFixed(1)}x smaller`],
@@ -340,7 +340,7 @@ export function TigerTab() {
         {live && stale && d.db_ok && <div className="banner">RECORDED: tiger.json stopped updating. The numbers are the last ones written, not live.</div>}
 
         <Sec n={1} title="The pipe">
-          <Pipe d={d} rows={rows} live={live} />
+          <Pipe d={d} rows={live ? rows : FACTS.rows_total} live={live} />
           <div className="note">
             {live ? <><LiveRows t={t} /> rows so far<span className="sep">·</span>{fmtInt(d.rows_session)} this session<span className="sep">·</span>{fmtBytes(d.on_disk_bytes)} on disk<span className="sep">·</span>{d.last_second ? <>last second: {d.last_second.frames} frames, min clearance {d.last_second.min_clearance_mm == null ? '--' : `${fmtInt(d.last_second.min_clearance_mm)} mm`}, {fmtPct(d.last_second.empty_share)} empty beams</> : 'no frames in the last second'}</>
               : <>{fmtInt(FACTS.rows_total)} rows<span className="sep">·</span>{fmtBytes(FACTS.on_disk_bytes)} on disk<span className="sep">·</span>{notLive}</>}

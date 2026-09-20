@@ -116,13 +116,13 @@ export function TigerPanel() {
   const t = useTiger();
   const now = useTick(100);
   const d = t.data;
-  const { rows } = derive(t, now);
+  const { rows, stale } = derive(t, now);
   return (
     <div className="tiger tp">
       <div className="row head"><span className="t">Tiger Data</span><span className="r"><StatusTags t={t} now={now} /></span></div>
       {d ? (
         <>
-          <Row k="rows"><span className="big">{fmtInt(rows)}</span><span className="sep">·</span><span className="dim">+{fmtInt(d.rows_per_s)}/s</span><span className="sep">·</span>session {fmtInt(d.rows_session)}</Row>
+          <Row k="rows"><span className="big">{fmtInt(rows)}</span><span className="sep">·</span><span className="dim">{stale ? 'stalled' : `+${fmtInt(d.rows_per_s)}/s`}</span><span className="sep">·</span>session {fmtInt(d.rows_session)}</Row>
           <Row k="on disk"><span className="big">{fmtBytes(d.on_disk_bytes)}</span><span className="sep">·</span><span className="dim">raw ~{fmtBytes(d.raw_bytes_est)}</span><span className="sep">·</span><span className="green">{d.ratio.toFixed(1)}x smaller</span></Row>
           <Row k="last 1 s">
             {d.last_second

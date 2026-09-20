@@ -1,0 +1,15 @@
+/* The command bar: Bloomberg-style navigation shared by every screen. Mnemonic keys, a command
+   line and GO. Same look on the dark terminal and on the map tab's dark header. */
+.cmdbar { display: flex; align-items: center; gap: 2px; height: 28px; font-family: var(--mono); font-size: 11px; white-space: nowrap; }
+.cmdbar .mn { height: 20px; padding: 0 7px; border: 0; border-radius: 0; background: transparent; color: #8a939e; font: inherit; font-size: 10px; letter-spacing: .12em; text-transform: uppercase; cursor: pointer; }
+.cmdbar .mn b { color: #e9b74f; font-weight: 600; margin-right: 5px; }
+.cmdbar .mn:hover { color: #d7dde5; background: #262b33; }
+.cmdbar .mn.on, .cmdbar .mn.on b { background: #e9b74f; color: #0b0d10; }
+.cmdbar .cmd { display: flex; align-items: center; margin-left: 8px; height: 20px; border: 1px solid #262b33; background: #0b0d10; }
+.cmdbar .cmd .p { color: #e9b74f; padding: 0 3px 0 5px; }
+.cmdbar .cmd input { width: 168px; height: 18px; padding: 0; border: 0; border-radius: 0; background: transparent; color: #d7dde5; font: inherit; font-size: 11px; letter-spacing: .08em; text-transform: uppercase; outline: none; caret-color: #e9b74f; }
+.cmdbar .cmd input::placeholder { color: #4a525c; text-transform: none; letter-spacing: 0; }
+.cmdbar .go { height: 20px; padding: 0 7px; border: 0; border-radius: 0; background: #237a4a; color: #0b0d10; font: inherit; font-size: 10px; font-weight: 700; letter-spacing: .1em; cursor: pointer; }
+.cmdbar .go:hover { background: #3ddc84; }
+.cmdbar .msg { margin-left: 6px; font-size: 10px; letter-spacing: .06em; color: #e9b74f; }
+.cmdbar .msg.err { color: #e0443e; }

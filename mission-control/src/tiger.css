@@ -18,7 +18,7 @@ html[data-view="tiger"] body { margin: 0; background: #0b0d10; background-image:
 .tiger .tg.none { color: #8a939e; }
 
 /* ---- the terminal tile: 8 lines, 340 x 160 at least, fills its cell ---- */
-.tp { display: flex; flex-direction: column; justify-content: space-between; width: 100%; height: 100%; min-width: 340px; min-height: 160px; padding: 6px 10px 7px; background: #12151a; border: 1px solid #262b33; border-radius: 2px; overflow: hidden; white-space: nowrap; }
+.tp { border: 0; display: flex; flex-direction: column; justify-content: space-between; width: 100%; height: 100%; min-width: 340px; min-height: 160px; padding: 6px 10px 7px; background: #12151a; border: 1px solid #262b33; border-radius: 2px; overflow: hidden; white-space: nowrap; }
 .tp .row { display: flex; align-items: baseline; gap: 8px; height: 17px; }
 .tp .row .k { flex: none; width: 60px; }
 .tp .row .v { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
@@ -28,25 +28,21 @@ html[data-view="tiger"] body { margin: 0; background: #0b0d10; background-image:
 .tp .head .r { display: flex; align-items: center; gap: 6px; }
 
 /* ---- the page ---- */
-.tiger-page { min-height: 100vh; background: #0b0d10; padding-bottom: 48px; }
-.tiger-page .tbar { position: sticky; top: 0; z-index: 2; display: flex; align-items: center; gap: 18px; padding: 8px 16px; background: #12151a; border-bottom: 1px solid #262b33; }
-.tiger-page .tbrand { color: #e9b74f; font-weight: 700; font-size: 13px; letter-spacing: .22em; }
-.tiger-page .tabs { display: flex; gap: 2px; }
-.tiger-page .tab { font: inherit; font-size: 10px; letter-spacing: .1em; text-transform: uppercase; color: #8a939e; background: transparent; border: 1px solid transparent; border-radius: 2px; padding: 2px 8px; cursor: pointer; }
-.tiger-page .tab:hover { color: #d7dde5; }
-.tiger-page .tab.on { color: #d7dde5; background: #0b0d10; border-color: #262b33; }
+.tiger-page { min-height: 100vh; background: #0b0d10; padding-bottom: 0; }
+.tiger-page .tbar { position: sticky; top: 0; z-index: 2; display: flex; align-items: center; gap: 10px; height: 28px; padding: 0 8px; background: #12151a; border-bottom: 1px solid #262b33; white-space: nowrap; }
+.tiger-page .tbrand { color: #e9b74f; font-weight: 600; font-size: 12px; letter-spacing: .14em; }
 .tiger-page .status { margin-left: auto; display: flex; align-items: center; gap: 8px; color: #8a939e; white-space: nowrap; overflow: hidden; }
-.tiger-page .wrap { max-width: 1120px; margin: 0 auto; padding: 14px 16px 0; }
-.tiger-page .thesis { font-size: 15px; line-height: 22px; max-width: 78ch; margin: 6px 0 14px; }
+.tiger-page .wrap { max-width: none; margin: 0; padding: 0; }
+.tiger-page .thesis { font-size: 12px; line-height: 17px; max-width: none; margin: 0; padding: 6px 8px; color: #8a939e; border-bottom: 1px solid #262b33; }
 .tiger-page .banner { border: 1px solid #e9b74f; color: #e9b74f; border-radius: 2px; padding: 5px 10px; margin-bottom: 12px; }
 .tiger-page .banner.err { border-color: #e0443e; color: #e0443e; white-space: pre-wrap; }
 
-.tiger-page .sec { background: #12151a; border: 1px solid #262b33; border-radius: 2px; margin-bottom: 10px; }
-.tiger-page .sec-head { display: flex; align-items: baseline; gap: 10px; padding: 5px 12px; border-bottom: 1px solid #262b33; }
+.tiger-page .sec { background: #12151a; border: 0; border-bottom: 1px solid #262b33; border-radius: 0; margin: 0; }
+.tiger-page .sec-head { display: flex; align-items: center; gap: 8px; height: 16px; padding: 0 6px; border-bottom: 1px solid #262b33; }
 .tiger-page .sec-head .n { color: #8a939e; font-size: 10px; }
-.tiger-page .sec-head .title { font-size: 11px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: #e9b74f; }
+.tiger-page .sec-head .title { font-size: 10px; font-weight: 400; letter-spacing: .12em; text-transform: uppercase; color: #e9b74f; }
 .tiger-page .sec-head .bullet { margin-left: auto; color: #8a939e; font-size: 10px; letter-spacing: .06em; text-transform: uppercase; text-align: right; }
-.tiger-page .sec-body { padding: 10px 12px 12px; }
+.tiger-page .sec-body { padding: 8px; }
 .tiger-page .note { color: #8a939e; margin-top: 6px; }
 .tiger-page p { margin: 0; }
 

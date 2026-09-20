@@ -1,3 +1,8 @@
+/* SF Mono, the Mac Terminal's font, copied out of Terminal.app by tools/fonts.sh (gitignored). */
+@font-face { font-family: 'SF Mono'; font-weight: 400; src: url('/fonts/SF-Mono-Regular.otf') format('opentype'); }
+@font-face { font-family: 'SF Mono'; font-weight: 500; src: url('/fonts/SF-Mono-Medium.otf') format('opentype'); }
+@font-face { font-family: 'SF Mono'; font-weight: 600 800; src: url('/fonts/SF-Mono-Bold.otf') format('opentype'); }
+
 /* Scout Mission Control, drawn like a blueprint on the brand's gray graph paper: white sheets with
    ink rules, mono lettering for labels and readouts, the plaster yellow as the one accent.
    Shape rule: everything is square-cornered (2 px). Two verdict colours, red fails and green passes. */
@@ -9,7 +14,7 @@
   --fail: #c93535; --fail-ink: #b32e2e; --fail-soft: #fbe3e1; --pass: #237a4a; --pass-ink: #1f6b41; --pass-soft: #def2e6;
   --scan: #23807b; --focus: #2b2925;
   --sans: var(--mono);   /* one font everywhere: the Mac terminal's */
-  --mono: ui-monospace, 'SF Mono', Menlo, Monaco, monospace;
+  --mono: 'SF Mono', ui-monospace, Menlo, monospace;
 }
 * { box-sizing: border-box; }
 html { -webkit-tap-highlight-color: transparent; }

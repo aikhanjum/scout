@@ -35,11 +35,6 @@ html[data-view="terminal"] body { margin: 0; background: #0b0d10; color: #d7dde5
 .term .badge.replay { color: var(--blue); border-color: var(--blue); }
 .term .badge.down { color: var(--bg); background: var(--red); border-color: var(--red); }
 
-/* Tabs.tsx, restyled */
-.term .tabs { display: flex; align-items: stretch; height: 28px; gap: 0; }
-.term .tab { height: 28px; padding: 0 8px; border: 0; border-bottom: 2px solid transparent; border-radius: 0; background: transparent; color: var(--dim); font-size: 10px; letter-spacing: .12em; text-transform: uppercase; cursor: pointer; }
-.term .tab:hover { background: var(--rule); color: var(--fg); }
-.term .tab.on { color: var(--amber); border-bottom-color: var(--amber); background: transparent; }
 
 /* SourceBar.tsx, restyled. Its badge and voice box are dropped: the header badge and the
    SESSION tile carry both. */

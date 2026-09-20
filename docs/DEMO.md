@@ -8,6 +8,10 @@ Everything below was rehearsed at 04:50 with the assembled robot on the phone ho
 2. Laptop joins the hotspot. Stay on it: the phone is the whole network.
 3. Power the Pi **after** the hotspot is up. About 60 s later the phone's banner says **2 connections**.
 4. Check: `curl http://scout.local:8080/status` → `"lidar": true, "motor": true`.
+   If `scout.local` does not resolve (mDNS on the hotspot is flaky; it failed at 06:06 with the Pi up), use the
+   address instead. On Aikhan's hotspot the Pi always got **172.20.10.2**; find it with
+   `for i in $(seq 2 14); do nc -z -G 1 172.20.10.$i 8080 && echo 172.20.10.$i; done`. Then put that address
+   everywhere `scout.local` appears below.
 
 Range that matters is robot-to-phone. Keep the phone in the driver's pocket; the robot rebooted twice
 tonight, once from power (uptime reset to 14 s), once from driving out of range. Either way it is back
@@ -58,3 +62,14 @@ hand on E-STOP; any arrow key cancels it.
 ## 6. After
 
 Ctrl-C the tailer: it flushes, compresses what is loose and prints the session's rows and the on-disk ratio.
+If Ctrl-C does nothing within 10 s (it happens while the robot is unreachable and the tailer is retrying), `kill -9` it:
+nothing is lost, the rows were already flushed a second after they arrived.
+
+## Hotspot rules learned the hard way (05:00–06:00)
+
+- The hotspot dies when the phone locks and thinks it is idle: **Auto-Lock → Never**, Low Power Mode off, phone on
+  charge, Personal Hotspot screen open.
+- The laptop hops to the venue wifi the moment the hotspot blinks, and then it cannot see the robot at all:
+  **turn off Auto-Join for the venue network** on the Mac before the demo.
+- The Pi rejoins only on a reboot: after any hotspot outage, power-cycle the Pi with the hotspot already up.
+- Range is robot-to-phone. Phone in the driver's pocket.

@@ -23,28 +23,39 @@ RAY_STEP_DEG = 2         # every other bearing is plenty at 50 mm cells and cost
 WALL_TOL_MM = 250        # occupied cells this close to a fitted wall are the wall, not an obstacle
 MIN_CLUSTER_CELLS = 3    # smaller than this is noise (3 cells at 50 mm is about 80 mm across)
 MERGE_MM = 500           # a cluster this close to one already reported is the same object
+MAX_OBJECT_MM = 1200     # with no fitted room, a run of cells longer than this is a wall, not a thing
 
 
 class Grid:
     def __init__(self):
         self.clear()
 
-    def clear(self, room=None):
+    def clear(self, room=None, span_mm=0):
         self.room = room
         self.cell = CELL_MM
         if room:
             self.w = int(room[0] / CELL_MM) + 2 * int(MARGIN_MM / CELL_MM)
             self.h = int(room[1] / CELL_MM) + 2 * int(MARGIN_MM / CELL_MM)
+            self.ox = self.oy = -MARGIN_MM               # room-frame mm of cell (0,0)'s centre
+        elif span_mm:
+            # Slam fits no rectangle, so there is no room to size the grid from. Lay out a fixed
+            # canvas with Scout's starting point at its centre instead. frame() crops to the part
+            # that has actually been seen, so the rest of the canvas costs nothing on the wire.
+            n = int(span_mm / CELL_MM)
+            self.w = self.h = n
+            self.ox = self.oy = -(n // 2) * CELL_MM
         else:
             self.w = self.h = 1
-        self.ox = self.oy = -MARGIN_MM if room else 0    # room-frame mm of cell (0,0)'s centre
+            self.ox = self.oy = 0
         self.score = bytearray(self.w * self.h)          # stored +OCC_MAX biased, so 0..2*OCC_MAX
         for i in range(len(self.score)):
             self.score[i] = OCC_MAX
         self._reported = []                              # (x_mm, y_mm) of obstacles already emitted
+        self._seen = None                                # [x0, y0, x1, y1] cells ever touched
 
     def ready(self):
-        return self.room is not None
+        """True once there is a canvas to draw on -- from a fitted room, or from slam's span."""
+        return self.w > 1
 
     def _cell(self, x, y):
         return int(round((x - self.ox) / self.cell)), int(round((y - self.oy) / self.cell))
@@ -53,6 +64,14 @@ class Grid:
         if 0 <= cx < self.w and 0 <= cy < self.h:
             i = cy * self.w + cx
             self.score[i] = max(0, min(2 * OCC_MAX, self.score[i] + delta))
+            b = self._seen
+            if b is None:
+                self._seen = [cx, cy, cx, cy]
+            else:
+                if cx < b[0]: b[0] = cx
+                if cy < b[1]: b[1] = cy
+                if cx > b[2]: b[2] = cx
+                if cy > b[3]: b[3] = cy
 
     def integrate(self, scan, px, py, heading_deg):
         """Fold one scan, taken at a known pose, into the grid."""
@@ -72,18 +91,39 @@ class Grid:
             # where it stopped is occupied
             self._bump(*self._cell(px + dx * mm, py + dy * mm), OCC_HIT)
 
-    def cells_string(self):
+    def _window(self):
+        """The part of the canvas worth sending: (x0, y0, w, h) in cells.
+
+        A room-sized grid is sent whole, exactly as before. Slam's canvas is mostly empty -- it is
+        sized for the largest space Scout might walk, not the one it is in -- so send the rectangle
+        that has actually been touched. A 12 m canvas is 57 kB of cells a second on a phone
+        hotspot; one room's worth of it is a fifth of that."""
+        if self.room or self._seen is None:
+            return 0, 0, self.w, self.h
+        x0, y0, x1, y1 = self._seen
+        x0, y0 = max(0, x0 - 1), max(0, y0 - 1)
+        x1, y1 = min(self.w - 1, x1 + 1), min(self.h - 1, y1 + 1)
+        return x0, y0, x1 - x0 + 1, y1 - y0 + 1
+
+    def cells_string(self, x0=0, y0=0, w=None, h=None):
         """'0' unknown, '1' free, '2' occupied, row-major (PROTOCOL.md section 6)."""
-        out = bytearray(len(self.score))
-        for i, s in enumerate(self.score):
-            v = s - OCC_MAX
-            out[i] = 0x32 if v >= OCC_THRESHOLD else 0x31 if v <= FREE_THRESHOLD else 0x30
+        w = self.w if w is None else w
+        h = self.h if h is None else h
+        out = bytearray(w * h)
+        k = 0
+        for gy in range(y0, y0 + h):
+            base = gy * self.w
+            for gx in range(x0, x0 + w):
+                v = self.score[base + gx] - OCC_MAX
+                out[k] = 0x32 if v >= OCC_THRESHOLD else 0x31 if v <= FREE_THRESHOLD else 0x30
+                k += 1
         return out.decode("ascii")
 
     def frame(self, t, pose_ok):
-        return {"type": "map", "t": t, "cell_mm": self.cell, "w": self.w, "h": self.h,
-                "origin": [round(self.ox), round(self.oy)], "cells": self.cells_string(),
-                "pose": bool(pose_ok)}
+        x0, y0, w, h = self._window()
+        return {"type": "map", "t": t, "cell_mm": self.cell, "w": w, "h": h,
+                "origin": [round(self.ox + x0 * self.cell), round(self.oy + y0 * self.cell)],
+                "cells": self.cells_string(x0, y0, w, h), "pose": bool(pose_ok)}
 
     # ---- obstacles ----
     def _is_wall(self, x, y):
@@ -100,8 +140,9 @@ class Grid:
             if s - OCC_MAX >= OCC_THRESHOLD:
                 cx, cy = i % self.w, i // self.w
                 x, y = self.ox + cx * self.cell, self.oy + cy * self.cell
-                if not self._is_wall(x, y):
-                    occ.add((cx, cy))
+                if self.room and self._is_wall(x, y):
+                    continue
+                occ.add((cx, cy))
         out = []
         while occ:
             seed = occ.pop()
@@ -114,10 +155,20 @@ class Grid:
                         occ.discard(n)
                         blob.append(n)
                         stack.append(n)
-            if len(blob) >= MIN_CLUSTER_CELLS:
-                mx = sum(c[0] for c in blob) / len(blob)
-                my = sum(c[1] for c in blob) / len(blob)
-                out.append((round(self.ox + mx * self.cell), round(self.oy + my * self.cell), len(blob)))
+            if len(blob) < MIN_CLUSTER_CELLS:
+                continue
+            if not self.room:
+                # With no fitted rectangle there is no "the walls are the edges" rule to lean on,
+                # so tell a wall from an object by how far it runs: anything longer than any piece
+                # of furniture is the building. Without this, every wall slam maps is handed out
+                # as an obstacle to stop at, photograph and name.
+                xs = [c[0] for c in blob]
+                ys = [c[1] for c in blob]
+                if max(max(xs) - min(xs), max(ys) - min(ys)) * self.cell > MAX_OBJECT_MM:
+                    continue
+            mx = sum(c[0] for c in blob) / len(blob)
+            my = sum(c[1] for c in blob) / len(blob)
+            out.append((round(self.ox + mx * self.cell), round(self.oy + my * self.cell), len(blob)))
         return out
 
     def claim_ahead(self, px, py, heading_deg, reach_mm):

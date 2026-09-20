@@ -12,6 +12,7 @@ from aiohttp import WSMsgType, web
 
 from . import config
 from .audit import clearance
+from .mapping import MERGE_MM
 
 log = logging.getLogger("scout.server")
 
@@ -178,8 +179,16 @@ class Scout:
         a = math.radians(self.pose.heading)
         x = self.pose.x + pt[0] * math.cos(a) - pt[1] * math.sin(a)
         y = self.pose.y + pt[0] * math.sin(a) + pt[1] * math.cos(a)
-        w, l = self.grid.room
-        on_wall = min(abs(x), abs(x - w), abs(y), abs(y - l)) <= WALL_TOL_MM
+        if self.grid.room:
+            w, l = self.grid.room
+            on_wall = min(abs(x), abs(x - w), abs(y), abs(y - l)) <= WALL_TOL_MM
+        else:
+            # Slam fits no rectangle, so "near a wall" cannot be a distance to one. Turn the
+            # question around: a pinch edge sitting on something already reported as an obstacle
+            # was made by that obstacle, and anything else is the building. Only the wording of
+            # the verdict rides on this -- "between two walls" or "between a wall and a chair".
+            near = self.grid.nearest_reported(x, y)
+            on_wall = not (near and math.hypot(near[0] - x, near[1] - y) <= MERGE_MM)
         return round(x), round(y), on_wall
 
     def telem(self, scan, width_mm):
@@ -247,11 +256,12 @@ class Scout:
             if scan:
                 self.pose.update(scan, moving=moving)
                 if self.pose.take_relock():
-                    self.grid.clear(self.pose.room)     # the old map was in a frame that is gone
+                    # the old map was in a frame that is gone
+                    self.grid.clear(self.pose.room, config.MAP_SPAN_MM)
                     self.audit.reset()
                 if self.pose.ok:
                     if not self.grid.ready():
-                        self.grid.clear(self.pose.room)
+                        self.grid.clear(self.pose.room, config.MAP_SPAN_MM)
                     self.grid.integrate(scan, self.pose.x, self.pose.y, self.pose.heading)
             else:
                 self.pose.ok = False

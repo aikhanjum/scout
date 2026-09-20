@@ -24,6 +24,9 @@ export default defineConfig({
     port: 5173,
     strictPort: true,
     allowedHosts: true,
+    // phones' browsers inject their own scripts (reader mode, wallet shims) that throw; Vite's red
+    // overlay would cover Scout's eyes for an error that is not ours
+    hmr: { overlay: false },
     proxy: {
       '/ws': { target: `ws://${SCOUT}`, ws: true, changeOrigin: true },
       '/status': scout,

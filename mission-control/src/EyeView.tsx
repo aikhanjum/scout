@@ -42,7 +42,15 @@ export function EyeView() {
     connect(want);
     // main.tsx connects to the default live source once rules.json has loaded, which can land after
     // this mount and would replace what the URL asked for. Put it back, the one time that happens.
-    return useStore.subscribe((s, prev) => { if (s.source !== prev.source && !same(s.source, want)) connect(want); });
+    // Deferred, never from inside the store's set(): connect() opens its socket after it sets the
+    // source, and a re-entrant connect() would leave that socket alive under the new generation.
+    let timer = 0;
+    const unsub = useStore.subscribe((s, prev) => {
+      if (s.source === prev.source || same(s.source, want)) return;
+      clearTimeout(timer);
+      timer = window.setTimeout(() => { if (!same(useStore.getState().source, want)) connect(want); }, 0);
+    });
+    return () => { clearTimeout(timer); unsub(); };
   }, []);
 
   const limit = widthRule(rules)?.limit ?? 860;
@@ -63,7 +71,6 @@ export function EyeView() {
     <div className="eye-page" onClick={() => setFov((f) => (f === 120 ? 360 : 120))}>
       <header className="eye-top">
         <span className="eye-title">SCOUT · EYES</span>
-        <span className="eye-fov">FOV {fov}</span>
         <span className="eye-space" />
         <span onClick={(e) => e.stopPropagation()}><Tabs /></span>
         <span className={`eye-tag ${tag[1]}`}>{tag[0]}</span>

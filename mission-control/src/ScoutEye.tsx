@@ -9,7 +9,7 @@ import { widthRule, type ScanGap, type Telem } from './protocol';
 import { C, distanceColour } from './palette';
 import './eye.css';
 
-const FONT = 'ui-monospace, Menlo, Consolas, monospace';
+const FONT = "ui-monospace, 'SF Mono', Menlo, Monaco, monospace";
 const FLOOR_MM = [500, 1000, 2000, 4000];     // reference ranges drawn on the floor
 const SCALE_MM = [400, 860, 2000, 5000];      // the stops of distanceColour, labelled on the legend
 const SCALE_BLOCKS = 32;                      // the legend is discrete steps, like the beams
@@ -258,8 +258,10 @@ function stateTags(ctx: CanvasRenderingContext2D, W: number, top: number, dpr: n
   const px = (n: number) => Math.round(n * dpr);
   const tags: [string, string][] = [];
   if (f.source.kind === 'replay') {
+    // the file name, cut to what fits beside the readouts (10 px mono is about 6 px a character)
     const name = f.source.name.replace(/\.ndjson$/, '');
-    tags.push([`REPLAY ${name.length > 28 ? name.slice(0, 27) + '…' : name}`, C.blue]);
+    const room = Math.max(6, Math.floor((W / dpr - (f.compact ? 20 : 180)) / 6) - (f.fw.startsWith('fake') ? 12 : 0) - 8);
+    tags.push([`REPLAY ${name.length > room ? name.slice(0, Math.max(1, room - 1)) + '…' : name}`, C.blue]);
   }
   if (f.fw.startsWith('fake')) tags.push(['SIMULATED', C.amber]);
   ctx.globalAlpha = 1;

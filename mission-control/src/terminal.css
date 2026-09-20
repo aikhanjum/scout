@@ -1,0 +1,154 @@
+/* OWNER: terminal agent. The terminal screen (docs/TERMINAL.md "Look"). Everything is scoped
+   under .term so style.css, the light theme of the Inferred position tab, is untouched. */
+
+html[data-view="terminal"], html[data-view="terminal"] body { height: 100%; overflow: hidden; }
+html[data-view="terminal"] body { margin: 0; background: #0b0d10; color: #d7dde5; }
+
+.term {
+  --bg: #0b0d10; --panel: #12151a; --rule: #262b33; --fg: #d7dde5; --dim: #8a939e;
+  --amber: #e9b74f; --red: #e0443e; --green: #3ddc84; --blue: #4da3ff;
+  position: fixed; inset: 0; display: flex; flex-direction: column; overflow: hidden;
+  background: var(--bg); color: var(--fg);
+  font: 12px/1.35 ui-monospace, Menlo, Consolas, monospace; font-variant-numeric: tabular-nums;
+}
+.term *, .term *::before, .term *::after { box-sizing: border-box; }
+.term button { font: inherit; transform: none; }
+.term button:active, .term button:hover { transform: none; }
+.term button::before, .term button[aria-pressed="true"]::before { content: none; }
+.term ::-webkit-scrollbar { width: 6px; height: 6px; }
+.term ::-webkit-scrollbar-thumb { background: var(--rule); }
+.term ::-webkit-scrollbar-track { background: transparent; }
+
+.term .c-green { color: var(--green); } .term .c-red { color: var(--red); } .term .c-amber { color: var(--amber); }
+.term .c-blue { color: var(--blue); } .term .c-dim { color: var(--dim); } .term .c-fg { color: var(--fg); }
+.term .lab { font-size: 10px; letter-spacing: .12em; text-transform: uppercase; color: var(--dim); }
+
+/* ---- header, 28 px ---- */
+.term .th { flex: 0 0 28px; height: 28px; display: flex; align-items: center; gap: 10px; padding: 0 8px; background: var(--panel); border-bottom: 1px solid var(--rule); white-space: nowrap; overflow: hidden; }
+.term .th .brand { color: var(--amber); font-weight: 600; letter-spacing: .14em; }
+.term .th .brand small { color: var(--dim); font-weight: 400; font-size: 10px; letter-spacing: .12em; margin-left: 8px; }
+.term .th .sep { color: var(--rule); }
+.term .th .clock { margin-left: auto; color: var(--dim); font-size: 11px; letter-spacing: .04em; }
+.term .th .clock b { color: var(--fg); font-weight: 400; margin-right: 8px; }
+.term .badge { display: inline-flex; align-items: center; height: 18px; padding: 0 7px; border: 1px solid; border-radius: 2px; font-size: 10px; font-weight: 600; letter-spacing: .14em; }
+.term .badge.live { color: var(--green); border-color: var(--green); }
+.term .badge.sim { color: var(--amber); border-color: var(--amber); }
+.term .badge.replay { color: var(--blue); border-color: var(--blue); }
+.term .badge.down { color: var(--bg); background: var(--red); border-color: var(--red); }
+
+/* Tabs.tsx, restyled */
+.term .tabs { display: flex; align-items: stretch; height: 28px; gap: 0; }
+.term .tab { height: 28px; padding: 0 8px; border: 0; border-bottom: 2px solid transparent; border-radius: 0; background: transparent; color: var(--dim); font-size: 10px; letter-spacing: .12em; text-transform: uppercase; cursor: pointer; }
+.term .tab:hover { background: var(--rule); color: var(--fg); }
+.term .tab.on { color: var(--amber); border-bottom-color: var(--amber); background: transparent; }
+
+/* SourceBar.tsx, restyled. Its badge and voice box are dropped: the header badge and the
+   SESSION tile carry both. */
+.term .status { display: inline-flex; align-items: center; gap: 8px; }
+.term .status:empty, .term .status .tag, .term .source .field.check { display: none; }
+.term .detail { font-size: 10px; color: var(--amber); max-width: 24ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.term .source { display: flex; align-items: center; gap: 8px; margin-left: 0; flex-wrap: nowrap; }
+.term .field { display: inline-flex; align-items: center; gap: 6px; font: inherit; font-size: 10px; letter-spacing: .12em; text-transform: uppercase; color: var(--dim); white-space: nowrap; }
+.term select, .term input:not([type="checkbox"]) { height: 20px; padding: 0 4px; border: 1px solid var(--rule); border-radius: 2px; background: var(--bg); color: var(--fg); font: inherit; font-size: 11px; outline: none; }
+.term select:hover, .term input:hover { border-color: var(--dim); }
+.term select:focus-visible, .term input:focus-visible, .term button:focus-visible { outline: 1px solid var(--amber); outline-offset: 0; }
+.term .source select { min-width: 150px; max-width: 210px; }
+
+/* ---- the grid: 12 columns, three rows, 1 px rules between tiles ---- */
+.term .tg { flex: 1 1 auto; min-height: 0; display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); grid-template-rows: minmax(0, 44fr) minmax(0, 18fr) minmax(0, 38fr); gap: 1px; background: var(--rule); }
+.term .tile { position: relative; min-width: 0; min-height: 0; overflow: hidden; display: flex; flex-direction: column; background: var(--panel); }
+.term .tl { flex: 0 0 16px; height: 16px; display: flex; align-items: center; gap: 8px; padding: 0 6px; border-bottom: 1px solid var(--rule); font-size: 10px; letter-spacing: .12em; text-transform: uppercase; color: var(--dim); white-space: nowrap; overflow: hidden; }
+.term .tl .r { margin-left: auto; letter-spacing: .04em; text-transform: none; overflow: hidden; text-overflow: ellipsis; }
+.term .tb { flex: 1 1 auto; min-height: 0; min-width: 0; overflow: hidden; position: relative; }
+.term .tb.fill > * { width: 100%; height: 100%; }
+.term .tb.hist-wrap:empty::before { content: 'no history.json · npm run upload -- upload <run> writes it'; display: block; padding: 6px; color: var(--dim); font-size: 11px; }
+.term .stale { opacity: .4; }
+.term .stub { width: 100%; height: 100%; padding: 6px; border: 1px dashed var(--rule); background: var(--panel); color: var(--dim); font: inherit; font-size: 11px; }
+
+/* key / value grids (STATUS, LIDAR HEALTH, SESSION) */
+.term .kv { display: grid; grid-template-columns: auto minmax(0, 1fr) auto minmax(0, 1fr); gap: 0 8px; align-content: start; padding: 3px 6px; line-height: 18px; }
+.term .kv .k { font-size: 10px; letter-spacing: .1em; text-transform: uppercase; color: var(--dim); white-space: nowrap; }
+.term .kv .v { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.term .kv .wide { grid-column: 2 / -1; }
+.term .kv .full { grid-column: 1 / -1; }
+.term .quad { display: flex; gap: 12px; }
+.term .quad span b { font-weight: 400; color: var(--dim); margin-right: 4px; font-size: 10px; }
+
+/* CLEARANCE */
+.term .clr { height: 100%; display: flex; flex-direction: column; padding: 6px; }
+.term .clr .big { font-size: 48px; line-height: 1; font-weight: 600; letter-spacing: -.02em; white-space: nowrap; margin-top: 2px; }
+.term .clr .big small { font-size: 14px; font-weight: 400; letter-spacing: 0; color: var(--dim); margin-left: 5px; }
+.term .clr .why { color: var(--dim); font-size: 11px; margin-top: 3px; line-height: 1.3; }
+.term .verdict { display: inline-block; width: max-content; margin-top: 8px; height: 18px; line-height: 16px; padding: 0 7px; border: 1px solid; border-radius: 2px; font-size: 10px; font-weight: 600; letter-spacing: .14em; }
+.term .verdict.pass { color: var(--green); border-color: var(--green); }
+.term .verdict.fail { color: var(--bg); background: var(--red); border-color: var(--red); }
+.term .rulecard { margin-top: auto; padding-top: 6px; border-top: 1px solid var(--rule); color: var(--dim); font-size: 11px; line-height: 1.4; }
+.term .rulecard b { color: var(--fg); font-weight: 600; letter-spacing: .06em; }
+.term .rulecard .src { color: var(--blue); }
+
+/* LIDAR HEALTH strip: one column per degree, drawn on a 360 px canvas stretched to the tile */
+.term .strip { display: block; width: 100%; height: 24px; background: var(--bg); image-rendering: pixelated; }
+.term .stripx { display: flex; justify-content: space-between; padding: 0 6px; font-size: 9px; letter-spacing: .1em; color: var(--dim); line-height: 12px; }
+
+/* GAPS and EVENTS: dense rows, scroll inside the tile */
+.term .rows { height: 100%; overflow-y: auto; overflow-x: hidden; }
+.term .row { display: grid; gap: 0 8px; padding: 0 6px; line-height: 18px; border-bottom: 1px solid var(--rule); white-space: nowrap; }
+.term .row > span { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.term .row.gap { grid-template-columns: 80px 44px 70px minmax(0, 1fr); }
+.term .row.ev { grid-template-columns: 58px 80px minmax(0, 1fr); }
+.term .row.ev .val { font-size: 11px; }
+.term .row .tag2 { font-size: 10px; letter-spacing: .1em; text-transform: uppercase; font-weight: 600; }
+.term .empty { padding: 6px; color: var(--dim); font-size: 11px; }
+
+/* SESSION */
+.term .sess { padding: 4px 6px; display: flex; flex-direction: column; gap: 4px; height: 100%; }
+.term .sess .line { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.term .sess .line input { flex: 1 1 auto; min-width: 0; }
+.term .sess .kv { padding: 2px 0 0; grid-template-columns: auto minmax(0, 1fr); }
+.term .btn2 { height: 22px; padding: 0 9px; border: 1px solid var(--rule); border-radius: 2px; background: var(--bg); color: var(--fg); font-size: 10px; font-weight: 600; letter-spacing: .12em; text-transform: uppercase; cursor: pointer; white-space: nowrap; }
+.term .btn2:hover { background: var(--bg); color: var(--fg); border-color: var(--dim); }
+.term .btn2:disabled, .term .btn2:disabled:hover { opacity: .35; cursor: default; background: var(--bg); color: var(--fg); border-color: var(--rule); }
+.term .btn2.go { color: var(--green); border-color: var(--green); }
+.term .btn2.go:hover { color: var(--green); border-color: var(--green); }
+.term .btn2.rec, .term .btn2.rec:hover { color: var(--bg); background: var(--red); border-color: var(--red); }
+.term .btn2.mark, .term .btn2.mark:hover { color: var(--amber); border-color: var(--amber); }
+.term .btn2.sm { height: 16px; padding: 0 6px; line-height: 14px; }
+.term .btn2.lit, .term .btn2.lit:hover { color: var(--bg); background: var(--amber); border-color: var(--amber); }
+
+/* DRIVE (Drive.tsx). The key lighting is the only animation on the page. */
+.term .drive { height: 100%; display: flex; flex-direction: column; align-items: stretch; padding: 4px 6px; }
+.term .pad { display: grid; grid-template-columns: repeat(3, 40px); grid-template-rows: repeat(3, 32px); gap: 3px; margin: 2px auto 6px; }
+.term .pad .key { display: flex; align-items: center; justify-content: center; padding: 0; border: 1px solid var(--rule); border-radius: 2px; background: var(--panel); color: var(--dim); font-size: 14px; line-height: 1; cursor: pointer; user-select: none; touch-action: none; transition: background 60ms linear, color 60ms linear, border-color 60ms linear; }
+.term .pad .key:hover { background: var(--panel); color: var(--fg); border-color: var(--dim); }
+.term .pad .key.on, .term .pad .key.on:hover { background: var(--amber); border-color: var(--amber); color: var(--bg); }
+.term .pad .mid { display: flex; align-items: center; justify-content: center; color: var(--rule); font-size: 10px; }
+.term .drive.off .pad { opacity: .3; pointer-events: none; }
+.term .drive .btns { display: flex; gap: 4px; }
+.term .drive .btns button { flex: 1 1 0; height: 24px; padding: 0; border: 1px solid; border-radius: 2px; background: var(--bg); font-size: 10px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; cursor: pointer; user-select: none; transition: background 60ms linear, color 60ms linear; }
+.term .estop, .term .estop:hover { color: var(--red); border-color: var(--red); background: var(--bg); }
+.term .estop.on, .term .estop.on:hover, .term .estop:active { color: var(--bg); background: var(--red); }
+.term .roam, .term .roam:hover { color: var(--dim); border-color: var(--rule); background: var(--bg); }
+.term .roam:hover { border-color: var(--dim); color: var(--fg); }
+.term .roam.on, .term .roam.on:hover { color: var(--bg); background: var(--green); border-color: var(--green); }
+.term .drive .hint { margin-top: 4px; font-size: 10px; letter-spacing: .08em; text-transform: uppercase; color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.term .drive.off .hint.first { color: var(--amber); }
+
+/* ROOM OVER TIME: History.tsx's own markup (.sheet.history / .hist), restyled here */
+.term .hist-wrap > .sheet { width: 100%; height: 100%; overflow: auto; border: 0; border-radius: 0; background: transparent; }
+.term .sheet-head { min-height: 0; padding: 1px 6px; gap: 8px; border-bottom: 1px solid var(--rule); background: transparent; }
+.term .sheet-head h2 { display: none; }
+.term .meta { font-size: 10px; letter-spacing: .1em; text-transform: uppercase; color: var(--dim); }
+.term .sheet-head .tag { display: inline-flex; align-items: center; height: 14px; padding: 0 5px; border: 1px solid var(--amber); border-radius: 2px; background: transparent; color: var(--amber); font: inherit; font-size: 9px; font-weight: 600; letter-spacing: .12em; text-transform: uppercase; gap: 0; }
+.term .hist { width: 100%; border-collapse: collapse; font-size: 11px; }
+.term .hist th { padding: 1px 6px; border-bottom: 1px solid var(--rule); text-align: left; font-size: 10px; font-weight: 400; letter-spacing: .1em; text-transform: uppercase; color: var(--dim); white-space: nowrap; }
+.term .hist td { padding: 0 6px; border-bottom: 1px solid var(--rule); line-height: 18px; white-space: nowrap; }
+.term .hist tr:last-child td { border-bottom: 0; }
+.term .hist .red { color: var(--red); } .term .hist .green { color: var(--green); } .term .hist .muted { color: var(--dim); }
+
+/* smaller laptops: the same grid, tighter type */
+@media (max-width: 1200px) {
+  .term { font-size: 11px; }
+  .term .clr .big { font-size: 36px; }
+  .term .row.gap { grid-template-columns: 70px 40px 62px minmax(0, 1fr); }
+  .term .row.ev { grid-template-columns: 54px 74px minmax(0, 1fr); }
+}

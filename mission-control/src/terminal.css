@@ -157,3 +157,7 @@ html[data-view="terminal"] body { margin: 0; background: #0b0d10; color: #d7dde5
   .term .row.gap { grid-template-columns: 70px 40px 62px minmax(0, 1fr); }
   .term .row.ev { grid-template-columns: 54px 74px minmax(0, 1fr); }
 }
+
+/* style.css sizes Quaden's pad keys at 60 px; inside the terminal the grid cell is the size */
+.term .pad .key { width: 100%; height: 100%; min-height: 0; min-width: 0; }
+.term .pad { grid-template-rows: repeat(3, 34px); margin-bottom: 8px; }

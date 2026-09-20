@@ -58,7 +58,7 @@ export function Tabs() {
       ))}
       <span className="cmd">
         <span className="p">&gt;</span>
-        <input ref={input} value={text} placeholder="code, then GO  (/ to type)" spellCheck={false}
+        <input ref={input} value={text} placeholder="code + GO" spellCheck={false}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => { if (e.key === 'Enter') go(); else if (e.key === 'Escape') { setText(''); input.current?.blur(); } e.stopPropagation(); }} />
       </span>

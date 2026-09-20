@@ -9,6 +9,8 @@
     "dash": "sh tools/fonts.sh; cd mission-control && npm run dev",
     "setup:tiger": "cd tools/upload-run && python3 -m venv .venv && .venv/bin/pip install -r requirements.txt",
     "upload": "tools/upload-run/.venv/bin/python tools/upload-run/upload_run.py",
-    "fonts": "sh tools/fonts.sh"
+    "fonts": "sh tools/fonts.sh",
+    "tail": "tools/upload-run/.venv/bin/python tools/upload-run/live_tail.py --out data/live/tiger.json --serve 127.0.0.1:8787",
+    "tunnel": "sh tools/tunnel.sh 5173"
   }
 }

@@ -15,6 +15,13 @@ Two audiences. **Sections 1–3 are for a teammate** who has been heads-down on 
 
 `CLAUDE.md` has the rules, `docs/PROTOCOL.md` is the contract, `RUNBOOK.md` is demo day.
 
+> **Later the same day, the lidar met a real room for the first time and the live 2D view was
+> correct.** Two things that looked like faults were not: the "phantom" lines are the gap-chord
+> overlay, and the white flash is most likely a USB dropout (unconfirmed — one observation settles
+> it). The workflow is continuous; nothing triggers a scan; the live view needs no pose but the
+> accumulating map does. **`docs/HANDOFF-LIDAR.md` has all of it**, plus what a three-walled space
+> does and why partial coverage of a missing wall is worse than none.
+
 ---
 
 ## 1. Read this first

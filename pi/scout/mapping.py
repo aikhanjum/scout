@@ -6,8 +6,8 @@ obstacle and one missed return cannot rub out a real one. A cell has to be hit r
 as occupied.
 
 Obstacles are whatever is occupied and is not the room's own walls. Scout reports each one once:
-`new_obstacles` returns only clusters it has not handed out before, so the server never emits two
-events for the same chair.
+`claim_near` hands a cluster out the first time Scout has been close to it and never again, so the
+server never emits two events for the same chair.
 """
 import math
 
@@ -24,6 +24,8 @@ WALL_TOL_MM = 250        # occupied cells this close to a fitted wall are the wa
 MIN_CLUSTER_CELLS = 3    # smaller than this is noise (3 cells at 50 mm is about 80 mm across)
 MERGE_MM = 500           # a cluster this close to one already reported is the same object
 MAX_OBJECT_MM = 1200     # with no fitted room, a run of cells longer than this is a wall, not a thing
+CLAIM_MM = 1200          # how near Scout must have come for a cluster to be worth reporting
+SETTLE_SCANS = 10        # scans a cluster must stop growing for before it is claimed (1 s at 10 Hz)
 
 
 class Grid:
@@ -52,6 +54,7 @@ class Grid:
             self.score[i] = OCC_MAX
         self._reported = []                              # (x_mm, y_mm) of obstacles already emitted
         self._seen = None                                # [x0, y0, x1, y1] cells ever touched
+        self._pending = {}                               # (x_mm, y_mm) -> (cells, scans_steady)
 
     def ready(self):
         """True once there is a canvas to draw on -- from a fitted room, or from slam's span."""
@@ -131,8 +134,8 @@ class Grid:
         w, l = self.room
         return min(abs(x), abs(x - w), abs(y), abs(y - l)) <= WALL_TOL_MM
 
-    def clusters(self):
-        """Connected runs of occupied non-wall cells. Returns [(x_mm, y_mm, cells), ...]."""
+    def _blobs(self):
+        """Connected runs of occupied non-wall cells, each as a list of (cx, cy)."""
         if not self.ready():
             return []
         occ = set()
@@ -161,37 +164,72 @@ class Grid:
                 # With no fitted rectangle there is no "the walls are the edges" rule to lean on,
                 # so tell a wall from an object by how far it runs: anything longer than any piece
                 # of furniture is the building. Without this, every wall slam maps is handed out
-                # as an obstacle to stop at, photograph and name.
+                # as an obstacle.
                 xs = [c[0] for c in blob]
                 ys = [c[1] for c in blob]
                 if max(max(xs) - min(xs), max(ys) - min(ys)) * self.cell > MAX_OBJECT_MM:
                     continue
-            mx = sum(c[0] for c in blob) / len(blob)
-            my = sum(c[1] for c in blob) / len(blob)
-            out.append((round(self.ox + mx * self.cell), round(self.oy + my * self.cell), len(blob)))
+            out.append(blob)
         return out
 
-    def claim_ahead(self, px, py, heading_deg, reach_mm):
-        """The obstacle Scout has stopped in front of, claimed so it is reported exactly once.
+    def _centre(self, blob):
+        mx = sum(c[0] for c in blob) / len(blob)
+        my = sum(c[1] for c in blob) / len(blob)
+        return round(self.ox + mx * self.cell), round(self.oy + my * self.cell)
 
-        Directional on purpose. Sweeping the whole grid instead would hand out every cluster the
-        lidar can see from the doorway, while each one is still four cells and metres away, and
-        then hand it out again once Scout is close enough to place it properly. Asking only about
-        what is in front of the robot, at the moment it stops, is what section 6 promises.
+    def _nearest_mm(self, blob, px, py):
+        """Distance to the closest cell of a cluster."""
+        return min(math.hypot(self.ox + cx * self.cell - px, self.oy + cy * self.cell - py)
+                   for cx, cy in blob)
 
-        Returns (x_mm, y_mm, cells) or None.
+    def clusters(self):
+        """Connected runs of occupied non-wall cells. Returns [(x_mm, y_mm, cells), ...]."""
+        return [(*self._centre(b), len(b)) for b in self._blobs()]
+
+    def claim_near(self, px, py, radius_mm=CLAIM_MM):
+        """Every cluster Scout has come close to, claimed once each.
+
+        The lidar sees all the way round, so what decides whether an obstacle can be reported is
+        how near Scout has come to it, not whether it is facing it. A bin passed at arm's length is
+        scanned from every side and placed to the centimetre, and one straight ahead is no more of
+        an obstacle than one alongside.
+
+        Two gates decide when. The cluster must come within `radius_mm`, so a four-cell smudge
+        several metres off is left alone until Scout has been close to it. And it must have
+        stopped growing for SETTLE_SCANS scans, because the centroid of a half-seen object sits on
+        its near edge and an event cannot be corrected once it is on the wire.
+
+        Range is to the nearest cell of the cluster, not its centroid: the centroid walks outward
+        as the far side fills in, and a thing whose centre is 1.3 m off can have its near face at
+        0.9 m.
+
+        Returns [(x_mm, y_mm, cells), ...], usually empty.
         """
-        a = math.radians(heading_deg)
-        tx, ty = px + math.cos(a) * reach_mm, py + math.sin(a) * reach_mm
-        near = [(math.hypot(x - tx, y - ty), x, y, n) for x, y, n in self.clusters()]
-        near = [c for c in near if c[0] <= reach_mm]
-        if not near:
-            return None
-        _, x, y, n = min(near)
-        if any(math.hypot(x - rx, y - ry) <= MERGE_MM for rx, ry in self._reported):
-            return None
-        self._reported.append((x, y))
-        return x, y, n
+        out, pending = [], {}
+        for blob in self._blobs():
+            if self._nearest_mm(blob, px, py) > radius_mm:
+                continue
+            x, y = self._centre(blob)
+            n = len(blob)
+            if any(math.hypot(x - rx, y - ry) <= MERGE_MM for rx, ry in self._reported):
+                continue
+            # the centroid shifts as the far side fills in, so a candidate is matched by distance
+            cells, steady, best = n, 0, None
+            for (kx, ky), v in self._pending.items():
+                gap = math.hypot(x - kx, y - ky)
+                if gap <= MERGE_MM and (best is None or gap < best[0]):
+                    best = (gap, v)
+            if best is not None:
+                kc, ks = best[1]
+                cells = max(n, kc)
+                steady = ks + 1 if n <= kc else 0
+            if steady >= SETTLE_SCANS:
+                self._reported.append((x, y))
+                out.append((x, y, n))
+            else:
+                pending[(x, y)] = (cells, steady)
+        self._pending = pending      # a cluster that went out of range or merged drops its wait
+        return out
 
     def nearest_reported(self, x, y):
         """The reported obstacle closest to a point, or None. Used to say whether a pinch is

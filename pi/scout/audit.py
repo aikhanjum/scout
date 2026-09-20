@@ -138,7 +138,6 @@ class Audit:
 
     def __init__(self, cfg):
         self.cfg = cfg               # the live runtime config dict, shared with the server
-        self.measuring = False       # set by the server while the camera is looking, not here
         self._pinch = None           # {"min", "t0", "at", "n"} while a pinch point is open
         self._gap_at = None          # when a qualifying gap was last seen ahead
 

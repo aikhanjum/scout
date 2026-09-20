@@ -219,7 +219,7 @@ class Pose:
         `moving` false means Scout's wheels are stopped. A stationary robot's last good pose is
         still its pose, so a failed fit is held rather than dropped. This matters: Scout loses the
         fit precisely when it is parked close to something big enough to hide a wall, which is the
-        same moment it has stopped to photograph that thing and needs somewhere to pin it.
+        same moment the map needs somewhere to pin that thing.
         """
         held = self._hold if not moving else None
         if not scan or len(scan) != 360:

@@ -50,12 +50,16 @@ function SourceBar() {
     }
   };
 
-  const state = source.kind === 'replay' ? 'warn' : link === 'up' ? 'good' : 'bad live';
-  const label = source.kind === 'replay' ? 'Replay' : link === 'up' ? 'Link up' : 'Link down';
+  // Only what is wrong, or worth saying out loud on stage. A healthy live link shows nothing:
+  // a dropped one raises the alert over the map, which is louder than a badge that is always there.
+  const badge = source.kind === 'replay' ? { text: 'Replay', cls: 'warn' }
+    : link === 'up' ? null : { text: 'Link down', cls: 'bad live' };
   return (
     <>
-      <span className={`tag ${state}`} role="status">{label}</span>
-      <span className="detail" title={detail}>{detail}</span>
+      <span className="status" role="status">
+        {badge && <span className={`tag ${badge.cls}`}>{badge.text}</span>}
+        {detail && <span className="detail" title={detail}>{detail}</span>}
+      </span>
       <div className="source">
         <label className="field">Source
           <select value={current} onChange={(e) => { pick(e.target.value); e.target.blur(); }} name="source">

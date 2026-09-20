@@ -1,12 +1,14 @@
 // The link to Scout. One source at a time: a live WebSocket, or a replay file played by t.
 // Pushes frames into the store, keeps the link flag honest, speaks verdicts, records.
-import { useStore, type Source } from './store';
+import { NO_RUN, useStore, type Source } from './store';
 import { PROTO, widthRule, type Command, type Frame, type RunHeader, type ScoutEvent, type Status } from './protocol';
 import { SPOKEN, speak, verdict } from './verdict';
+import { telemRow, type TelemRow } from './export';
 
 const LINK_TIMEOUT_MS = 2000;
 const RECONNECT_MS = 1000;
 const REC_MAP_MS = 10000;   // one map frame per 10 s into a recording (PROTOCOL.md section 7)
+const LOG_MAX = 200000;     // telemetry rows kept for the tables: over five hours at 10 Hz
 
 let ws: WebSocket | null = null;
 let generation = 0; // bumped by every connect(); callbacks from an older generation are ignored
@@ -15,13 +17,33 @@ let rec: Frame[] | null = null;
 let recStartedAt = ''; // wall clock when REC was pressed: the run header's started_at
 let recLastMap = -Infinity;
 
+// What the Download menu hands out: every event and every telemetry frame (minus its scan) since
+// the run started, or since connecting when no run was. Always on, unlike the recorder, because
+// without the scans it is small.
+let eventLog: ScoutEvent[] = [], telemLog: TelemRow[] = [];
+let fileStartedAt = '';   // a replay's own wall clock, from its run header. A report made from a
+                          // replay carries the date the run happened, not the date it was played.
+export const sessionEvents = () => eventLog;
+export const sessionTelemetry = () => telemLog;
+
 const store = () => useStore.getState();
+
+// Wipe the board. Scout's `map clear` drops its grid, its room frame and its audit together
+// (reset_map in pi/scout/server.py), so every pin still on screen came from state the robot has
+// just thrown away, and it will hand out the same chair again as it re-discovers it. The map, the
+// trail, the pins and the rows behind the Download menu go together or not at all. The recorder is
+// left alone: an .ndjson is a faithful log of the wire, not of the board.
+export function clearBoard() {
+  eventLog = []; telemLog = [];
+  store().set({ trail: [], events: [] });
+}
 
 export function connect(source: Source) {
   generation += 1;
   clearTimeout(watchdog); clearTimeout(reconnectTimer); clearTimeout(replayTimer);
   if (ws) { ws.onclose = null; ws.onmessage = null; ws.close(); ws = null; }
-  store().set({ source, link: 'down', detail: '', telem: null, map: null, trail: [], events: [], baseUrl: '' });
+  eventLog = []; telemLog = []; fileStartedAt = '';
+  store().set({ source, link: 'down', detail: '', fw: '', telem: null, map: null, trail: [], events: [], run: NO_RUN });
   if (source.kind === 'live') openSocket(source.url, generation, true);
   else void playFile(source, generation);
 }
@@ -45,9 +67,9 @@ export function stopRecording(space: string): string | null {
   const frames = rec; rec = null;
   store().set({ recording: false });
   if (!frames?.length) return null;
-  const { detail, rules } = store();
+  const { fw, rules } = store();
   const header: RunHeader = {
-    type: 'run', space, fw: detail || 'unknown', started_t: frames[0].t, started_at: recStartedAt,
+    type: 'run', space, fw: fw || 'unknown', started_t: frames[0].t, started_at: recStartedAt,
     config: { width_limit_mm: widthRule(rules)?.limit ?? 860 },
   };
   return [header, ...frames].map((x) => JSON.stringify(x)).join('\n') + '\n';
@@ -70,10 +92,9 @@ function openSocket(url: string, gen: number, fresh = false) {
   store().set({ detail: 'connecting' });
   s.onopen = () => {
     if (gen !== generation) return;
-    store().set({ detail: 'connected', baseUrl: httpOrigin(url) });
+    store().set({ detail: '' });
     sendConfig();
-    if (fresh) send({ cmd: 'map', action: 'clear' });   // a page load or a source switch starts the map over
-    void fetchStatus(url, gen);
+    void fetchStatus(url, gen, fresh);
   };
   s.onmessage = (e) => { if (gen !== generation) return; try { handleFrame(JSON.parse(e.data)); } catch { /* not a frame, ignore */ } };
   s.onclose = () => {
@@ -83,7 +104,10 @@ function openSocket(url: string, gen: number, fresh = false) {
   };
 }
 
-async function fetchStatus(wsUrl: string, gen: number) {
+// fresh: a page load or a source switch, which starts the map over, but only when Scout is not
+// mid-run. On the robot `map clear` also drops the room frame, and re-locking it from wherever
+// Scout is parked would leave the rest of the run in a frame the map so far was not drawn in.
+async function fetchStatus(wsUrl: string, gen: number, fresh = false) {
   try {
     const st: Status = await (await fetch(`${httpOrigin(wsUrl)}/status`)).json();
     if (gen !== generation) return;
@@ -92,29 +116,46 @@ async function fetchStatus(wsUrl: string, gen: number) {
     const missing = Object.entries(d)
       .filter(([k, ok]) => !ok && !(k === 'esp32' && 'motor' in d))
       .map(([k]) => k);
+    // The firmware and the address are not news; a missing device and a protocol mismatch are.
+    // RUNBOOK section 1 checks `devices` with curl, which is where the full picture belongs.
     store().set({
-      detail: `fw ${st.fw}  ${st.ip}`
-        + (missing.length ? `  no ${missing.join('/')}` : '')
-        + (st.proto !== PROTO ? `  PROTO ${st.proto} (expected ${PROTO})` : ''),
+      fw: st.fw ?? '',
+      detail: (missing.length ? `no ${missing.join('/')}` : '')
+        + (st.proto !== PROTO ? `${missing.length ? '  ' : ''}proto ${st.proto}, expected ${PROTO}` : ''),
     });
-  } catch { /* status is a nicety, telemetry is the truth */ }
+    const active = !!st.run?.active;
+    const run = store().run;
+    if (active !== run.active) store().set({ run: { ...run, active, space: st.run?.space ?? '' } });
+    if (fresh && !active) send({ cmd: 'map', action: 'clear' });
+  } catch { /* status is a nicety, telemetry is the truth. No status, no clear: the map may be mid-run */ }
 }
 
 function linkDown() { store().set({ link: 'down' }); }
 
 function handleFrame(f: Frame) {
   if (f.type === 'telem') {
-    store().set({ telem: f, link: 'up' });
-    if (f.pose) store().addPose(f.x_mm, f.y_mm);
+    const s = store();
+    // the first pose after run_start is the room frame this run is measured in
+    const run = f.pose && s.run.active && !s.run.locked ? { ...s.run, locked: true } : s.run;
+    s.set({ telem: f, link: 'up', run });
+    if (f.pose) s.addPose(f.x_mm, f.y_mm);
     clearTimeout(watchdog);
     watchdog = window.setTimeout(linkDown, LINK_TIMEOUT_MS);
     rec?.push(f);
+    if (telemLog.length < LOG_MAX) telemLog.push(telemRow(f));
   } else if (f.type === 'map') {
     store().set({ map: f });
     if (rec && f.t - recLastMap >= REC_MAP_MS) { rec.push(f); recLastMap = f.t; }
   } else if (f.type === 'event') {
-    if (f.kind === 'run_start') store().set({ trail: [] });   // a run starts with a cleared map (PROTOCOL.md section 5)
+    if (f.kind === 'run_start') {   // a run starts with a cleared map and a fresh room frame (PROTOCOL.md section 5)
+      clearBoard();
+      const startedAt = store().source.kind === 'replay' ? fileStartedAt : new Date().toISOString();
+      store().set({ run: { active: true, space: f.space, startT: f.t, startedAt, locked: false } });
+    } else if (f.kind === 'run_stop') {
+      store().set({ run: { ...store().run, active: false } });
+    }
     store().addEvent(f);
+    eventLog.push(f);
     if (store().voice && SPOKEN.has(f.kind)) speak(verdict(f));
     rec?.push(f);
   }
@@ -137,7 +178,9 @@ async function playFile(source: Extract<Source, { kind: 'replay' }>, gen: number
   const header = lines.find((l): l is RunHeader => l.type === 'run');
   const frames = lines.filter((l): l is Frame => l.type === 'telem' || l.type === 'event' || l.type === 'map');
   if (!frames.length) { store().set({ detail: `${source.name}: no frames` }); return; }
-  store().set({ detail: `${source.name}  ${header?.space ?? ''}` });
+  // the header is what the file knows about itself: a report made from it says so (report.ts)
+  fileStartedAt = header?.started_at ?? '';
+  store().set({ detail: '', fw: header?.fw ?? '' });   // the source picker already names the file
 
   const eventCount = frames.filter((f) => f.type === 'event').length;
   const span = frames[frames.length - 1].t - frames[0].t + 1000; // one loop plus a 1 s gap

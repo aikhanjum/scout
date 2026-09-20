@@ -98,7 +98,7 @@ if (file) {
         case 'config': sim.config = config; return;
       }
     },
-    status: () => ({ mode: sim.mode, measuring: !!sim.measure, camera: true }),
+    status: () => ({ mode: sim.mode, measuring: false, camera: false }),
   };
   log('live simulation: drive it from the dashboard');
 }

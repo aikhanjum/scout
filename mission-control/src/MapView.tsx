@@ -29,10 +29,12 @@ const colorFor = (k: ScoutEvent['kind']) =>
   k === 'width_fail' ? C.fail : k === 'width_pass' ? C.pass : k === 'ramp' ? C.ramp : C.obstacle;
 
 // What each marker says on the map. Short: the feed carries the full line.
+// The stamp beside a pin. An obstacle gets none: Scout has no camera to name it, and a map of
+// "unknown" stamps says nothing the grey block under the pin does not.
 const tagFor = (e: ScoutEvent) =>
   e.kind === 'width_fail' || e.kind === 'width_pass' ? `${e.value} mm`
     : e.kind === 'mark' ? (e.label || 'mark')
-      : (e.label || 'unknown');
+      : e.label && e.label !== 'unknown' ? e.label : '';
 
 type Room = { w_mm: number; l_mm: number };
 
@@ -171,6 +173,7 @@ function draw(cv: HTMLCanvasElement, map: MapFrame | null, telem: Telem | null, 
     g.beginPath(); g.arc(x, y, 6, 0, Math.PI * 2); g.fill();
     g.strokeStyle = '#fff'; g.lineWidth = 2; g.stroke();
     const tag = tagFor(e);
+    if (!tag) continue;
     const w = g.measureText(tag).width + 12;
     g.fillStyle = 'rgba(255,255,255,.94)';
     g.fillRect(x + 10, y - 10, w, 20);
@@ -181,7 +184,7 @@ function draw(cv: HTMLCanvasElement, map: MapFrame | null, telem: Telem | null, 
   }
 
   // Scout: the logo in a round badge, with a tick for heading and an arc ahead for how far the way
-  // is clear (the nearest return within RANGE_DEG, capped at RANGE_MM). The ring turns yellow while it measures.
+  // is clear (the nearest return within RANGE_DEG, capped at RANGE_MM).
   if (telem?.pose) {
     const a = (telem.heading_deg * Math.PI) / 180;
     const x = px(telem.x_mm), y = py(telem.y_mm), r = 17;
@@ -203,7 +206,7 @@ function draw(cv: HTMLCanvasElement, map: MapFrame | null, telem: Telem | null, 
     if (ROBOT.complete && ROBOT.naturalWidth) g.drawImage(ROBOT, x - r, y - r, 2 * r, 2 * r);
     else { g.fillStyle = C.robot; g.beginPath(); g.arc(x, y, r * 0.6, 0, Math.PI * 2); g.fill(); }
     g.restore();
-    g.strokeStyle = telem.measuring ? C.robot : C.ink; g.lineWidth = telem.measuring ? 3 : 1.5;
+    g.strokeStyle = C.ink; g.lineWidth = 1.5;
     g.beginPath(); g.arc(x, y, r, 0, Math.PI * 2); g.stroke();
   }
 
@@ -215,6 +218,10 @@ function draw(cv: HTMLCanvasElement, map: MapFrame | null, telem: Telem | null, 
     g.fillStyle = C.ink; g.font = `500 12px ${FONT}`; g.fillText('1 m', PAD + m + 8, ch - 14);
   }
 }
+
+// The canvas on screen, for the PNG download. There is one map on the page.
+let canvasEl: HTMLCanvasElement | null = null;
+export const mapImage = () => new Promise<Blob | null>((resolve) => (canvasEl ? canvasEl.toBlob(resolve, 'image/png') : resolve(null)));
 
 export function MapView() {
   const ref = useRef<HTMLCanvasElement>(null);
@@ -231,9 +238,10 @@ export function MapView() {
       const cv = ref.current, st = useStore.getState();
       if (cv) draw(cv, st.map, st.telem, placedEvents(st.events), st.trail);
     };
+    canvasEl = ref.current;
     window.addEventListener('resize', redraw);
     ROBOT.addEventListener('load', redraw);
-    return () => { window.removeEventListener('resize', redraw); ROBOT.removeEventListener('load', redraw); };
+    return () => { canvasEl = null; window.removeEventListener('resize', redraw); ROBOT.removeEventListener('load', redraw); };
   }, []);
 
   const room = telem?.room;
@@ -254,7 +262,6 @@ export function MapView() {
         <span className="sep" />
         <span><i style={{ background: C.fail }} />too narrow</span>
         <span><i style={{ background: C.pass }} />clear</span>
-        <span><i style={{ background: C.ramp }} />ramp</span>
         <span><i style={{ background: C.obstacle }} />obstacle</span>
       </div>
     </section>

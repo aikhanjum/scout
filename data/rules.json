@@ -4,6 +4,5 @@
      "text":"Doorways on an accessible route need at least 860 mm of clear opening. The same number applies to aisles.",
      "source":"Ontario Building Code 3.8.3.3",
      "fix":"Widen the opening, rehang the door, or move the obstruction."}
-  ],
-  "labels": ["ramp","door","chair","table","box","bin","cable","wall","unknown"]
+  ]
 }

@@ -19,3 +19,7 @@ data/runs/*.ndjson
 
 # diagnostic dumps
 pi/tools/scan-dump.json
+
+# Claude skills tooling
+.agents/
+skills-lock.json

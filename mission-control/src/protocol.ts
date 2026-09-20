@@ -70,7 +70,7 @@ export interface Status {
 
 // data/rules.json (PROTOCOL.md section 8). There is no slope rule: Scout cannot measure slope.
 export interface Rule { id: string; kind: 'width'; limit: number; unit: string; cmp: 'max' | 'min'; text: string; source: string; fix: string }
-export interface Rules { rules: Rule[]; labels: string[] }
+export interface Rules { rules: Rule[] }
 
 export const passes = (rule: Rule, value: number) => (rule.cmp === 'max' ? value <= rule.limit : value >= rule.limit);
 

@@ -11,17 +11,16 @@ export const MAX_RANGE = 12000;
 export const ROBOT_R = 130;                        // half of robot_width_mm
 export const CONFIG = { width_limit_mm: 860, robot_width_mm: 260, wall_target_mm: 300, cruise: 0.4 };
 
-// Obstacles: axis-aligned boxes in the room frame, with what the camera would call them.
-// The bin sits close to the right wall and makes the one wall-obstacle pinch that fails.
-// The chair and the ramp stand in the wall-following lane, so Scout meets them, stops, names them
-// and goes around. The bin leaves a 510 mm slot against the wall: too narrow, and it says so. The
-// table is off the lane, so it lands on the map as geometry that Scout never got close enough to
-// name -- which is the honest outcome and worth showing.
+// Obstacles: axis-aligned boxes in the room frame. Scout has no camera, so it never learns what
+// any of them is; the names are for whoever reads this file. The chair and the ramp stand in the
+// wall-following lane, so Scout meets them head on and goes around. The bin leaves a 510 mm slot
+// against the right wall: too narrow, and it says so. The table is off the lane, and Scout passes
+// within arm's length of it without ever facing it, which the lidar does not mind.
 export const OBSTACLES = [
-  { x0: 1700, y0: 150,  x1: 2260, y1: 900,  label: 'chair', conf: 0.71, kind: 'obstacle' },
-  { x0: 3510, y0: 1400, x1: 4210, y1: 2400, label: 'ramp',  conf: 0.83, kind: 'ramp' },
-  { x0: 3320, y0: 3200, x1: 3700, y1: 3700, label: 'bin',   conf: 0.64, kind: 'obstacle' },
-  { x0: 600,  y0: 3400, x1: 1400, y1: 3800, label: 'table', conf: 0.58, kind: 'obstacle' },
+  { x0: 1700, y0: 150,  x1: 2260, y1: 900 },    // a chair, in the lane along the bottom wall
+  { x0: 3510, y0: 1400, x1: 4210, y1: 2400 },   // a ramp against the right wall, in the lane
+  { x0: 3320, y0: 3200, x1: 3700, y1: 3700 },   // a bin, 510 mm off the right wall
+  { x0: 600,  y0: 3400, x1: 1400, y1: 3800 },   // a table, 600 mm off the left wall
 ];
 
 // Every wall of the room plus every side of every box, as segments to cast against.
@@ -107,17 +106,21 @@ export class Grid {
 }
 
 // --- the live robot ----------------------------------------------------------
-// Drives by the commands in PROTOCOL.md section 5 and behaves as section 6 describes: it stops to
-// name each obstacle once, measures every pinch it passes, and in wall_follow it keeps the wall on
-// its right until it has closed a loop. Call step(t, dt) at 10 Hz; it returns the frames to send.
+// Drives by the commands in PROTOCOL.md section 5 and behaves as section 6 describes: it reports
+// each obstacle once as it comes near it, measures every pinch it passes, and in wall_follow it
+// keeps the wall on its right until it has closed a loop. Call step(t, dt) at 10 Hz; it returns
+// the frames to send.
 const V_MAX = 1050;                 // mm/s at v = 1 (cruise 0.4 is 420 mm/s, as in the scripted run)
 const W_MAX = 180;                  // deg/s at w = 1
 const WATCHDOG_MS = 600;            // teleop: no drive for this long and the motors stop
-const LOOK_MM = 650;                // Scout pulls up this far from an obstacle to name it
-const NAME_MS = 1500;               // and holds still this long while the camera classifies
 const PINCH_MS = 3000;              // a pinch closes after this long at the latest
 const PINCH_MIN_MS = 500;           // and is noise if it lasted less than this
 const OPEN_ROOM_MM = 2000;          // wider than this across the path is a room, not a gap
+export const CLAIM_MM = 1200;       // an obstacle this near has been scanned well enough to report
+export const CLAIM_HOLD_MS = 1000;  // once it has been that near this long (PROTOCOL.md section 6, 1)
+
+// Distance from a point to the nearest edge of an axis-aligned obstacle, 0 inside it.
+export const rangeTo = (o, x, y) => Math.hypot(Math.max(o.x0 - x, 0, x - o.x1), Math.max(o.y0 - y, 0, y - o.y1));
 
 const wrap = (d) => ((d + 180) % 360 + 360) % 360 - 180;
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
@@ -139,10 +142,10 @@ export class Sim {
     this.v = 0; this.w = 0;
     this.mode = 'idle';
     this.cmd = { v: 0, w: 0, at: -Infinity };   // last teleop drive and when it arrived
-    this.measure = null;                        // { until, o } while holding still to name o
     this.pinch = null;                          // { since, min, x, y, between } while inside a gap
     this.armed = true;                          // false after a pinch times out, until the gap opens
-    this.named = new Set();                     // obstacles named this run
+    this.named = new Set();                     // obstacles reported this run
+    this.nearby = new Map();                    // obstacle -> t it came within CLAIM_MM
     this.widths = [];                           // [x, y, mm] of every width verdict this run
     this.seq = 0;
     this.space = '';
@@ -163,7 +166,7 @@ export class Sim {
     this.loop = mode === 'wall_follow' ? { x0: this.x, y0: this.y, travelled: 0 } : null;
   }
   // "Forget the map and start mapping again from here": obstacles get named again and gaps measured again.
-  clearMap() { this.grid.clear(); this.lastMap = -Infinity; this.named.clear(); this.widths = []; this.pinch = null; this.armed = true; }
+  clearMap() { this.grid.clear(); this.lastMap = -Infinity; this.named.clear(); this.nearby.clear(); this.widths = []; this.pinch = null; this.armed = true; }
   runStart(space) { this.space = space; this.named.clear(); this.widths = []; this.clearMap(); return [this.event({ kind: 'run_start' })]; }
   runStop() { const ev = this.event({ kind: 'run_stop' }); this.space = ''; return [ev]; }
   mark(label) { return [this.event({ kind: 'mark', label: String(label ?? 'mark'), x_mm: Math.round(this.x), y_mm: Math.round(this.y) })]; }
@@ -179,25 +182,14 @@ export class Sim {
 
     // what the robot wants to do
     let v = 0, w = 0;
-    if (this.measure) {
-      if (t >= this.measure.until) {
-        const o = this.measure.o;
-        this.named.add(o);
-        out.push(this.event({ kind: o.kind, label: o.label, confidence: o.conf, photo: '',
-          x_mm: Math.round((o.x0 + o.x1) / 2), y_mm: Math.round((o.y0 + o.y1) / 2) }));
-        this.measure = null;
-      }
-    } else if (this.mode === 'teleop') {
+    if (this.mode === 'teleop') {
       if (t - this.cmd.at <= WATCHDOG_MS) { v = this.cmd.v; w = this.cmd.w; }
     } else if (this.mode === 'wall_follow') {
       ({ v, w } = this.follow(scan));
     }
 
-    // an unnamed obstacle straight ahead while moving towards it: pull up and look (section 6, 1-2)
-    if (!this.measure && v > 0) {
-      const o = this.obstacleAhead(scan);
-      if (o) { this.measure = { until: t + NAME_MS, o }; v = 0; w = 0; }
-    }
+    // every obstacle Scout has come near, reported once (section 6, 1)
+    out.push(...this.claimNear(t));
 
     // move, keeping the body out of every surface: a blocked move just does not happen
     this.heading = wrap(this.heading + w * W_MAX * dt);
@@ -222,7 +214,7 @@ export class Sim {
     out.push(...this.pinchStep(t, clearance));
 
     out.push({
-      type: 'telem', t, mode: this.mode, measuring: !!this.measure, lidar: true, scan, gaps: [],
+      type: 'telem', t, mode: this.mode, measuring: false, lidar: true, scan, gaps: [],
       pose: true, x_mm: Math.round(this.x), y_mm: Math.round(this.y), heading_deg: Math.round(this.heading * 10) / 10,
       room: { w_mm: ROOM.w, l_mm: ROOM.l },
       clearance_mm: clearance.mm, bump: [0, 0], stuck: false, v: this.v, w: this.w,
@@ -231,16 +223,23 @@ export class Sim {
     return out;
   }
 
-  // The obstacle the nearest return within 15 degrees of straight ahead belongs to, if it is
-  // closer than LOOK_MM and has not been named this run.
-  obstacleAhead(scan) {
-    let best = { d: Infinity, seg: null };
-    for (let a = -15; a <= 15; a++) {
-      const r = cast(this.x, this.y, toRad(this.heading + a));
-      if (r.d < best.d) best = r;
+  // Every obstacle Scout has come near, reported once each whether or not it ever faced it: the
+  // lidar sees all the way round. It arrives unnamed, because nothing on Scout can say what it is;
+  // claim_near in pi/scout/mapping.py sends the same.
+  claimNear(t) {
+    const out = [];
+    for (const o of OBSTACLES) {
+      if (this.named.has(o)) continue;
+      if (rangeTo(o, this.x, this.y) > CLAIM_MM) { this.nearby.delete(o); continue; }
+      const since = this.nearby.get(o);
+      if (since === undefined) { this.nearby.set(o, t); continue; }
+      if (t - since < CLAIM_HOLD_MS) continue;
+      this.named.add(o);
+      this.nearby.delete(o);
+      out.push(this.event({ kind: 'obstacle', label: 'unknown', confidence: 0, photo: '',
+        x_mm: Math.round((o.x0 + o.x1) / 2), y_mm: Math.round((o.y0 + o.y1) / 2) }));
     }
-    const o = best.seg?.[4];
-    return o && best.d < LOOK_MM && !this.named.has(o) ? o : null;
+    return out;
   }
 
   // Straight across the path: left return plus right return. Zero in an open room and when the

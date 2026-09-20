@@ -14,7 +14,6 @@ PORT = _env("SCOUT_PORT", 8080, int)
 MOTOR_PORT = _env("SCOUT_MOTOR_PORT", None) or _env("SCOUT_ESP32_PORT", None)   # unset: probe. "none": disabled.
 LIDAR_PORT = _env("SCOUT_LIDAR_PORT", None)
 LIDAR_OFFSET_DEG = _env("SCOUT_LIDAR_OFFSET_DEG", 0.0, float)  # the lidar angle that points straight ahead
-CAMERA = _env("SCOUT_CAMERA", "on")                            # "none" disables the camera
 TELEM_HZ = 10
 RUN_BUFFER_TELEM = 1200   # 2 Hz decimated telemetry kept in the run buffer: 10 minutes. Events are never dropped.
 

@@ -1,10 +1,9 @@
 """Roomba-style wall following, from the lidar alone (PROTOCOL.md section 6, behaviour 4).
 
 Scout holds a fixed distance from the wall on its right and drives forward. When something blocks
-the way it stops, which is the cue for the server to photograph and name it, and then turns away to
-go around. No pose is involved: the behaviour is a reflex on the current scan. Pose only decides
-whether what it finds can be written onto the map, so Scout keeps working in a room it cannot
-localise in.
+the way it stops, then turns away to go around. No pose is involved: the behaviour is a reflex on
+the current scan. Pose only decides whether what it finds can be written onto the map, so Scout
+keeps working in a room it cannot localise in.
 
 Nothing here blocks or sleeps. `step` is called once per scan and returns the next (v, w).
 """
@@ -44,8 +43,8 @@ class WallFollow:
         self._backing_until = None
 
     def step(self, now, scan):
-        """One scan in, (v, w) out. Also updates `blocked`, which the server turns into a stop,
-        a photograph and an obstacle event."""
+        """One scan in, (v, w) out. Also updates `blocked`, true while something in front is
+        holding Scout up."""
         if not scan or len(scan) != 360:
             return 0.0, 0.0
         cruise = float(self.cfg["cruise"])

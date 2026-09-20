@@ -21,7 +21,7 @@ scan, so the room is not scenery — it is the sensor. Three rules, in order of 
    walls. Corners are where this goes wrong: walls pushed apart to make the room bigger open up
    diagonal slots at each corner. Tape or overlap them.
 3. **Keep it clear.** Feet, bags and people standing in it are obstacles that hide walls. Furniture
-   against a wall is fine and is what the camera is there to name.
+   against a wall is fine: it is an obstacle, and Scout reports it as one.
 
 Check it before you trust it:
 
@@ -42,7 +42,7 @@ Power the Pi. It starts on its own through systemd. Give it 30 seconds, then fro
 curl http://scout.local:8080/status
 ```
 
-You want `"lidar":true` and `"motor":true` in `devices` (`"esp32"` is the same flag under its old name). `"camera":false` only costs you the labels: obstacles come out as "unknown" and everything else still works. If `curl` cannot resolve `scout.local`, the Pi is not on the hotspot. Turn the hotspot on first, then reboot the Pi.
+You want `"lidar":true` and `"motor":true` in `devices` (`"esp32"` is the same flag under its old name). `"camera"` is always `false`: Scout has no camera. If `curl` cannot resolve `scout.local`, the Pi is not on the hotspot. Turn the hotspot on first, then reboot the Pi.
 
 First time on a new Pi, or if `systemctl` says there is no `scout` unit, do the install steps in
 `pi/README.md` once. After that it starts on every boot.
@@ -67,24 +67,26 @@ Open it in Chrome. Click the page once so speech works. Turn the volume up.
 
 ## 3. Point it at the robot
 
-Top right, the **Live** box. Type and press **Connect**:
+Top right, the **Source** dropdown: pick **Live: scout.local**. The map starts drawing itself; the header stays quiet while the link is healthy and says **Link down** when it is not. The choice is remembered, so you only do this once per laptop.
 
-```
-ws://scout.local:8080/ws
-```
+Then a run:
 
-The badge goes **LINK UP** and the map starts drawing itself. The URL is remembered, so you only do this once per laptop.
+1. Put Scout on open floor. Slam, the default, takes its position from wherever it starts. The rectangle fitter (`SCOUT_POSE=rect`) needs all four walls in view, not nose to a wall, not behind the table: it reads the room off its first clean scan after a start, and a wall hidden at that moment locks in a wrong room for the whole run.
+2. Type the space name and press **Start run**. The tag beside the button reads **Finding position…** and then **Position locked**, or the room size under `rect`, which you check against the tape measure. **No position** after 5 s, or a wrong size, means press **Stop run**, move Scout, start again.
+3. Drive with the arrow keys or WASD.
+4. **Stop run** stops the motors and saves the run as an `.ndjson` replay file. **Download** gives the run report as one HTML page with the map in it, and the events, telemetry and map as CSV, at any time. The report is what you hand to a judge; the `.ndjson` is what replays.
+
+Reloading the page mid-run is safe: the dashboard sees the run is active and leaves Scout's map and room frame alone.
 
 ## 4. Switch to replay (the backup)
 
 If the robot will not connect, or it misbehaves on stage:
 
-1. Pick `room-scan.ndjson` in the **Replay** dropdown, top right.
-2. Click **Play**.
+Pick `room-scan.ndjson` in the **Source** dropdown, top right, under Replay.
 
-The badge changes to **REPLAY** and the whole run plays: the room drawing itself, the chair and the ramp named as Scout stops in front of them, the 510 mm slot failing, the lidar view. It loops. Say out loud that it is a recording. To go back to the robot, press **Connect** again.
+The badge changes to **REPLAY** and the whole run plays: the room drawing itself, a marker landing on each obstacle as Scout comes near it, the 510 mm slot failing. It loops. Say out loud that it is a recording. To go back to the robot, pick **Live: scout.local** again.
 
-The replay is a simulated room, not a recording of this robot, and the obstacle labels in it are scripted rather than classified. Say that too if anyone asks what they are watching.
+The replay is a simulated room, not a recording of this robot. Say that too if anyone asks what they are watching.
 
 Replay needs no robot and no fake server. It reads the file straight from the dashboard.
 
@@ -164,6 +166,6 @@ npm run gen                                          # regenerate the replay fil
   and no LEDs. Keep the dashboard volume up; it is the only channel the verdict has.
 - Dashboard full screen, clicked once, volume up, pointed at `ws://scout.local:8080/ws`.
 - The room is clear of feet and bags. People standing in it become obstacles and break the rectangle fit, and when the fit goes so does the map.
-- Press **ROAM** once and watch the room close before you start talking. If the map does not close a loop, drive it by hand: the width verdicts still fire.
+- Drive a lap and watch the room close before you start talking. If the map does not close, keep driving: the width verdicts still fire.
 - A replay armed in the dropdown, and the backup video open in another tab.
 - Fresh cells, power bank full, spares on the table.

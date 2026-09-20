@@ -1,7 +1,7 @@
 // Scout ESP32 bridge. Speaks docs/PROTOCOL.md section 9 over USB serial at 115200.
 // In:  D v w | S | B [p] | L r g | T           Out: JSON lines, echo at 10 Hz.
 // Owns the motors and the 500 ms watchdog, and nothing else. No wifi, no IMU: Scout senses with
-// the lidar and the camera on the Pi. The four motors are ganged as two sides.
+// the lidar on the Pi. The four motors are ganged as two sides.
 #include <Arduino.h>
 #include "config.h"
 

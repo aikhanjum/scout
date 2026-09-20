@@ -6,7 +6,7 @@
 > is actually fitted. **Nothing below is flashed to Scout, and `npm run flash` has been removed.**
 > This directory is kept only because the code compiles clean and costs nothing to leave alone.
 
-ESP32 bridge: motors, 500 ms watchdog, beep, LEDs. Speaks `docs/PROTOCOL.md` section 9 over USB serial. No wifi and no IMU — Scout senses with the lidar and camera on the Pi. Pins and sign flips are in `src/config.h` and mirror `hardware/PINMAP.md`.
+ESP32 bridge: motors, 500 ms watchdog, beep, LEDs. Speaks `docs/PROTOCOL.md` section 9 over USB serial. No wifi and no IMU — Scout senses with the lidar on the Pi. Pins and sign flips are in `src/config.h` and mirror `hardware/PINMAP.md`.
 
 ## Build and flash
 

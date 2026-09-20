@@ -3,18 +3,25 @@ import type { MapFrame, Rules, ScoutEvent, Telem } from './protocol';
 
 export type Source = { kind: 'live'; url: string } | { kind: 'replay'; name: string; text?: string };
 
+// The run as Scout reports it, from run_start/run_stop events and /status. startT is Scout's t at
+// run_start. locked is whether a pose has arrived since: a run start drops the room frame, and the
+// first fit after it is the one the whole run is measured in (pi/scout/pose.py).
+export interface RunState { active: boolean; space: string; startT: number | null; startedAt: string; locked: boolean }
+export const NO_RUN: RunState = { active: false, space: '', startT: null, startedAt: '', locked: false };
+
 interface State {
   source: Source;
   link: 'up' | 'down';   // up only while telemetry is arriving (2 s watchdog in scout.ts)
   detail: string;        // one line next to the link badge: fw and ip, file name, or the error
+  fw: string;            // firmware string from /status, '' until it answers. 'fake...' is a simulation
   telem: Telem | null;   // last frame. Kept when the link drops, shown greyed out.
   map: MapFrame | null;  // last map frame. Kept across a link drop so the view never blanks.
   trail: [number, number][]; // where Scout has been this run, room mm, oldest first. Only while pose was true.
   events: (ScoutEvent & { id: number })[]; // newest first. id is local: seq restarts when Scout reboots
   voice: boolean;
-  recording: boolean;
+  recording: boolean;    // this browser is keeping the frames for a replay file
+  run: RunState;
   rules: Rules | null;
-  baseUrl: string;       // http origin of the live Scout, for /photo/<id>
   set: (patch: Partial<State>) => void;
   addEvent: (e: ScoutEvent) => void;
   addPose: (x: number, y: number) => void;
@@ -24,8 +31,8 @@ let nextId = 0;
 
 export const useStore = create<State>((set) => ({
   source: { kind: 'live', url: 'ws://localhost:8080/ws' },
-  link: 'down', detail: '', telem: null, map: null, trail: [], events: [],
-  voice: true, recording: false, rules: null, baseUrl: '',
+  link: 'down', detail: '', fw: '', telem: null, map: null, trail: [], events: [],
+  voice: true, recording: false, run: NO_RUN, rules: null,
   set: (patch) => set(patch),
   addEvent: (e) => set((s) => ({ events: [{ ...e, id: nextId++ }, ...s.events].slice(0, 100) })),
   // a point every 25 mm of travel is plenty for a line; the cap is hours of driving

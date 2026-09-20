@@ -84,6 +84,9 @@ input[type="checkbox"] { width: 15px; height: 15px; margin: 0; accent-color: var
 .brand img { width: 40px; height: 40px; }
 .brand h1 { font: 600 17px/1 var(--mono); letter-spacing: .12em; text-transform: uppercase; }
 .brand small { display: block; font: 400 11px/1 var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--muted); margin-top: 5px; }
+/* the link badge and any message: empty and silent while everything is working */
+.status { display: inline-flex; align-items: center; gap: 12px; }
+.status:empty { display: none; }
 .detail { font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 40ch; }
 .source { display: flex; flex-wrap: wrap; align-items: center; gap: 14px; margin-left: auto; }
 .source select { min-width: 220px; }
@@ -93,6 +96,12 @@ main { padding: 16px 20px 24px; display: grid; gap: 16px; }
 .controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; }
 .controls .gap { width: 10px; }
 .controls .end { margin-left: auto; }
+.controls .note { flex-basis: 100%; margin: 0; }
+
+/* a button that opens a short list of actions, for the downloads */
+.menu { position: relative; }
+.menu-list { position: absolute; top: calc(100% + 4px); left: 0; z-index: 5; min-width: 190px; display: grid; padding: 4px; background: var(--sheet); border: 1px solid var(--ink); border-radius: 2px; box-shadow: 0 8px 20px rgba(43, 41, 37, .16); }
+.menu-list button { height: 32px; border-color: transparent; justify-content: flex-start; text-transform: none; letter-spacing: 0; font-weight: 500; font-size: 13px; }
 
 /* sheets: white drawing sheets with an ink rule and a title strip */
 /* the map, with the verdict and teleop beside it; events run full width underneath */
@@ -110,7 +119,6 @@ main { padding: 16px 20px 24px; display: grid; gap: 16px; }
 .legend i.arc { width: 12px; height: 12px; border: 2px solid rgba(43, 41, 37, .5); border-color: transparent transparent transparent rgba(43, 41, 37, .5); border-radius: 50%; margin-right: 4px; }
 .legend i.path { width: 14px; height: 0; border-top: 2px dashed var(--ink); vertical-align: 1px; }
 .legend .sep { width: 1px; height: 14px; background: var(--rule-soft); }
-.shot { display: block; margin-top: 6px; max-width: 120px; border: 1px solid var(--rule); }
 
 .gauge .sheet-head { justify-content: space-between; }
 .gauge-body { padding: 12px 14px 14px; }

@@ -23,7 +23,6 @@ SHORT = {
 }
 CONFIG_KEYS = ("width_limit_mm", "robot_width_mm", "wall_target_mm", "cruise")
 MODES = ("idle", "teleop", "wall_follow")
-LOOK_COOLDOWN_S = 4.0       # after naming one obstacle, do not stop for another this soon
 WALL_TOL_MM = 250           # a pinch edge this close to a wall was made by the wall
 
 
@@ -48,8 +47,8 @@ class Scout:
     """Everything the protocol exposes. Called from the aiohttp loop only; device threads just
     leave snapshots behind."""
 
-    def __init__(self, motor, lidar, camera, pose, grid, audit, follower, cfg):
-        self.motor, self.lidar, self.camera = motor, lidar, camera
+    def __init__(self, motor, lidar, pose, grid, audit, follower, cfg):
+        self.motor, self.lidar = motor, lidar
         self.pose, self.grid, self.audit, self.follower = pose, grid, audit, follower
         self.cfg = cfg
         self.mode = "idle"
@@ -62,10 +61,7 @@ class Scout:
         self.pending = []           # event frames waiting for the next broadcast
         self.clients = set()
         self.tick = 0
-        self.measuring = False
         self.led_off_at = None
-        self._look_task = None
-        self._looked_at = -1e9
         self._last_scan = []
 
     def t(self):
@@ -77,13 +73,14 @@ class Scout:
 
     def status(self):
         return {
-            "proto": 2, "fw": self.fw(), "mode": self.mode, "measuring": self.measuring,
+            # measuring was the camera's stop-and-classify pause. Scout has no camera, so it is
+            # always false; the key stays because the protocol has it.
+            "proto": 2, "fw": self.fw(), "mode": self.mode, "measuring": False,
             "run": dict(self.run),
             # "esp32" is the wire key from protocol v2 and the dashboard still reads it; the
             # board behind it is now a RedBoard. "motor" is the same flag under its real name.
             "devices": {"esp32": self.motor.connected, "motor": self.motor.connected,
-                        "lidar": self.lidar.connected,
-                        "camera": bool(self.camera and self.camera.connected)},
+                        "lidar": self.lidar.connected, "camera": False},
             "config": dict(self.cfg), "uptime_ms": self.t(), "ip": _ip(),
         }
 
@@ -93,8 +90,6 @@ class Scout:
         k = c["cmd"]
         try:
             if k == "drive":
-                if self.measuring:
-                    return {"ok": True}                       # ignored while looking, motors stay stopped
                 if not self.motor.connected:
                     return {"ok": False, "err": "motor board not connected"}
                 self.mode = "teleop"                          # a human taking over cancels roaming
@@ -162,8 +157,7 @@ class Scout:
         self.buffer.append(frame)
         self.pending.append(frame)
         kind = ev["kind"]
-        # Only verdicts light up. An obstacle or a ramp is an observation, not a judgement
-        # (PROTOCOL.md section 6).
+        # Only verdicts light up. An obstacle is an observation, not a judgement (PROTOCOL.md section 6).
         if kind == "width_fail":
             self.motor.send("L 1 0"); self.motor.send("B 1"); self.led_off_at = time.monotonic() + 3
         elif kind == "width_pass":
@@ -195,7 +189,7 @@ class Scout:
         p = self.pose
         d = self.motor.drive
         return {
-            "type": "telem", "t": self.t(), "mode": self.mode, "measuring": self.measuring,
+            "type": "telem", "t": self.t(), "mode": self.mode, "measuring": False,
             "lidar": bool(scan),
             "scan": scan if scan else [],
             "gaps": list(self.lidar.gaps) if scan else [],
@@ -215,32 +209,8 @@ class Scout:
                   "started_t": self.run_started_t, "started_at": self.run_started_at, "config": dict(self.cfg)}
         return "\n".join(json.dumps(x) for x in [header, *self.buffer]) + "\n"
 
-    # ---- looking at what is in front ----
-    async def look_and_name(self, loop):
-        """Stop, photograph what is ahead, name it, emit one obstacle or ramp event.
-
-        The capture and the CLIP forward pass are seconds of blocking work, so they go to a thread;
-        the 10 Hz loop keeps serving telemetry throughout with `measuring` true.
-        """
-        self.measuring = True
-        self.motor.send("S")
-        try:
-            label, conf, photo, is_ramp = await loop.run_in_executor(None, self.camera.look) \
-                if self.camera else ("unknown", 0.0, "", False)
-            got = self.grid.claim_ahead(self.pose.x, self.pose.y, self.pose.heading,
-                                        int(self.cfg["wall_target_mm"]) * 4) if self.pose.ok else None
-            if got:
-                x, y, _ = got
-                self.emit({"kind": "ramp" if is_ramp else "obstacle", "label": label,
-                           "confidence": conf, "photo": photo, "x_mm": x, "y_mm": y})
-        finally:
-            self.measuring = False
-            self._looked_at = time.monotonic()
-            self._look_task = None
-
     # ---- the loop ----
     async def telemetry_loop(self):
-        loop = asyncio.get_running_loop()
         period = 1.0 / config.TELEM_HZ
         map_every = max(1, config.TELEM_HZ // config.MAP_HZ)
         while True:
@@ -267,6 +237,12 @@ class Scout:
                     if not self.grid.ready():
                         self.grid.clear(self.pose.room, config.MAP_SPAN_MM)
                     self.grid.integrate(scan, self.pose.x, self.pose.y, self.pose.heading)
+                    # The lidar sees all the way round, so an obstacle is reported once Scout has
+                    # come near it, whether or not it ever faced it. Nothing on Scout can say what
+                    # it is: label, confidence and photo are the protocol's no-camera values.
+                    for x, y, _n in self.grid.claim_near(self.pose.x, self.pose.y):
+                        self.emit({"kind": "obstacle", "label": "unknown", "confidence": 0.0,
+                                   "photo": "", "x_mm": x, "y_mm": y})
             else:
                 self.pose.ok = False
 
@@ -283,13 +259,10 @@ class Scout:
             for ev in self.audit.step(now, width_mm, place, self.lidar.gaps if scan else ()):
                 self.emit(ev)
 
-            # wall following, and stopping to name whatever blocks the way
-            if self.mode == "wall_follow" and not self.measuring:
+            # wall following
+            if self.mode == "wall_follow":
                 v, w = self.follower.step(now, scan)
-                if self.follower.blocked and self._look_task is None \
-                        and now - self._looked_at > LOOK_COOLDOWN_S:
-                    self._look_task = asyncio.create_task(self.look_and_name(loop))
-                elif self.motor.connected:
+                if self.motor.connected:
                     self.motor.send(f"D {_clamp(v):.2f} {_clamp(w):.2f}")
 
             if self.led_off_at and now >= self.led_off_at:
@@ -375,10 +348,8 @@ def make_app(scout):
         return web.json_response(scout.map_frame())
 
     async def get_photo(req):
-        jpeg = scout.camera.photo(req.match_info["pid"]) if scout.camera else None
-        if not jpeg:
-            return web.json_response({"ok": False, "err": "no photo"}, status=404)
-        return web.Response(body=jpeg, content_type="image/jpeg")
+        # The route is in the protocol. The camera behind it is gone, so every id is a miss.
+        return web.json_response({"ok": False, "err": "no photo"}, status=404)
 
     async def runs_latest(req):
         return web.Response(text=scout.run_log(), content_type="application/x-ndjson")

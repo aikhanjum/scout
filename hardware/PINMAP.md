@@ -26,19 +26,18 @@ Avoid GPIO 0, 2, 12 and 15 for anything that could be pulled at boot. GPIO 34, 3
 
 Gone in v2: the MPU6050. Scout has no IMU and measures no slope. Also gone since v1.1: the servo, the HC-SR04 and its echo divider.
 
-## Pi 4, lidar and camera
+## Pi 4 and lidar
 
 - **RPLIDAR A2M8** on the Pi by USB (its CP2102 adapter). Its motor does not spin on power alone; the driver starts it by PWM through the adapter, so a healthy-looking lidar that streams nothing means the motor command did not take. Mount it level, at the top, with a clear 360 degree view: nothing of the robot above the beam plane, or that part of the robot becomes a permanent wall in every scan and the room fit fails. Note which way the A2M8's 0 degree mark points; if it is not straight ahead, set `SCOUT_LIDAR_OFFSET_DEG`.
-- **Pi camera** on the CSI ribbon, fixed, facing straight forward, roughly level. It only ever looks at what is directly in front of Scout, so it does not pan and needs no servo. Mount it rigidly: a camera that droops points at the floor.
 - **ESP32** on the Pi by USB. That cable is also the ESP32's power.
-- The Pi needs a true 5 V / 3 A source. Budget: Pi 4 up to 3 A peak, lidar about 0.4 A, camera about 0.25 A, ESP32 about 0.2 A.
+- The Pi needs a true 5 V / 3 A source. Budget: Pi 4 up to 3 A peak, lidar about 0.4 A, ESP32 about 0.2 A.
 
 ## Power, separate rails, one ground
 
 | Rail | Source | Feeds |
 | --- | --- | --- |
 | Motors | 18650 pack | Driver VM only |
-| Pi 5 V | Its own regulator, or a USB power bank | Pi 4, which feeds the lidar, camera and ESP32 |
+| Pi 5 V | Its own regulator, or a USB power bank | Pi 4, which feeds the lidar and ESP32 |
 | Logic 3.3 V | ESP32's own regulator | Driver VCC, LEDs |
 
 All grounds connected: pack minus, driver GND, ESP32 GND. The Pi and ESP32 share ground through USB.

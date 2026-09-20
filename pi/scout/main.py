@@ -1,13 +1,10 @@
 """Start the Scout brain: find the devices, start their threads, serve protocol v2."""
-import json
 import logging
-import os
 
 from aiohttp import web
 
 from . import config, ports
 from .audit import Audit
-from .camera import Camera
 from .redboard import RedBoard
 from .lidar import Lidar
 from .mapping import Grid
@@ -40,18 +37,6 @@ def _pose_engine():
     return Slam(span_mm=config.MAP_SPAN_MM)
 
 
-def _labels():
-    """The label set the camera scores against lives in data/rules.json (PROTOCOL.md section 8),
-    so changing what Scout can name is a data edit, not a code change."""
-    path = os.path.join(os.path.dirname(__file__), "..", "..", "data", "rules.json")
-    try:
-        with open(path) as f:
-            return json.load(f).get("labels") or []
-    except (OSError, ValueError) as e:
-        log.warning("could not read data/rules.json (%s): the camera will have no labels", e)
-        return []
-
-
 def main():
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)-7s %(name)s: %(message)s",
                         datefmt="%H:%M:%S")
@@ -79,20 +64,10 @@ def main():
     motor.start()
     lidar.start()
 
-    camera = None
-    if config.CAMERA != "none":
-        camera = Camera(_labels())
-    else:
-        log.warning("CAMERA DISABLED (SCOUT_CAMERA=none): obstacles will be reported as 'unknown'")
-
     cfg = dict(config.CONFIG)
     if config.MASK_BEHIND_DEG:
         log.info("MASK: ignoring returns within %d degrees of straight behind (a carrier's body). "
                  "SCOUT_MASK_BEHIND_DEG=0 when Scout drives itself.", config.MASK_BEHIND_DEG)
-    scout = Scout(motor, lidar, camera, _pose_engine(), Grid(), Audit(cfg), WallFollow(cfg), cfg)
+    scout = Scout(motor, lidar, _pose_engine(), Grid(), Audit(cfg), WallFollow(cfg), cfg)
     log.info("serving http://%s:%d  ws://%s:%d/ws  (also localhost)", _ip(), config.PORT, _ip(), config.PORT)
-    try:
-        web.run_app(make_app(scout), host="0.0.0.0", port=config.PORT, print=None, access_log=None)
-    finally:
-        if camera:
-            camera.close()
+    web.run_app(make_app(scout), host="0.0.0.0", port=config.PORT, print=None, access_log=None)

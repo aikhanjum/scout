@@ -1,0 +1,125 @@
+/* Tiger Data: the terminal tile (.tiger.tp) and the judge's page (.tiger.tiger-page). Everything is
+   scoped under .tiger so nothing leaks into the light theme. Palette from palette.ts. */
+html[data-view="tiger"] body { margin: 0; background: #0b0d10; background-image: none; color: #d7dde5; color-scheme: dark; }
+
+.tiger { font-family: var(--mono, ui-monospace, Menlo, Consolas, monospace); font-size: 12px; line-height: 17px; color: #d7dde5; font-variant-numeric: tabular-nums; box-sizing: border-box; -webkit-font-smoothing: antialiased; }
+.tiger *, .tiger *::before, .tiger *::after { box-sizing: inherit; }
+.tiger .k { font-size: 10px; letter-spacing: .08em; text-transform: uppercase; color: #8a939e; }
+.tiger .dim { color: #8a939e; }
+.tiger .amber { color: #e9b74f; }
+.tiger .red { color: #e0443e; }
+.tiger .green { color: #3ddc84; }
+.tiger .blue { color: #4da3ff; }
+.tiger .sep { color: #4a525c; padding: 0 5px; }
+.tiger .tg { display: inline-block; height: 16px; line-height: 14px; padding: 0 5px; border: 1px solid currentColor; border-radius: 2px; font-size: 10px; letter-spacing: .08em; text-transform: uppercase; white-space: nowrap; vertical-align: middle; }
+.tiger .tg.live { color: #3ddc84; }
+.tiger .tg.rec, .tiger .tg.sim { color: #e9b74f; }
+.tiger .tg.err { color: #e0443e; }
+.tiger .tg.none { color: #8a939e; }
+
+/* ---- the terminal tile: 8 lines, 340 x 160 at least, fills its cell ---- */
+.tp { display: flex; flex-direction: column; justify-content: space-between; width: 100%; height: 100%; min-width: 340px; min-height: 160px; padding: 6px 10px 7px; background: #12151a; border: 1px solid #262b33; border-radius: 2px; overflow: hidden; white-space: nowrap; }
+.tp .row { display: flex; align-items: baseline; gap: 8px; height: 17px; }
+.tp .row .k { flex: none; width: 60px; }
+.tp .row .v { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.tp .row .big { font-size: 15px; font-weight: 600; letter-spacing: -.01em; }
+.tp .head { justify-content: space-between; border-bottom: 1px solid #262b33; height: 20px; padding-bottom: 3px; }
+.tp .head .t { font-size: 11px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: #e9b74f; }
+.tp .head .r { display: flex; align-items: center; gap: 6px; }
+
+/* ---- the page ---- */
+.tiger-page { min-height: 100vh; background: #0b0d10; padding-bottom: 48px; }
+.tiger-page .tbar { position: sticky; top: 0; z-index: 2; display: flex; align-items: center; gap: 18px; padding: 8px 16px; background: #12151a; border-bottom: 1px solid #262b33; }
+.tiger-page .tbrand { color: #e9b74f; font-weight: 700; font-size: 13px; letter-spacing: .22em; }
+.tiger-page .tabs { display: flex; gap: 2px; }
+.tiger-page .tab { font: inherit; font-size: 10px; letter-spacing: .1em; text-transform: uppercase; color: #8a939e; background: transparent; border: 1px solid transparent; border-radius: 2px; padding: 2px 8px; cursor: pointer; }
+.tiger-page .tab:hover { color: #d7dde5; }
+.tiger-page .tab.on { color: #d7dde5; background: #0b0d10; border-color: #262b33; }
+.tiger-page .status { margin-left: auto; display: flex; align-items: center; gap: 8px; color: #8a939e; white-space: nowrap; overflow: hidden; }
+.tiger-page .wrap { max-width: 1120px; margin: 0 auto; padding: 14px 16px 0; }
+.tiger-page .thesis { font-size: 15px; line-height: 22px; max-width: 78ch; margin: 6px 0 14px; }
+.tiger-page .banner { border: 1px solid #e9b74f; color: #e9b74f; border-radius: 2px; padding: 5px 10px; margin-bottom: 12px; }
+.tiger-page .banner.err { border-color: #e0443e; color: #e0443e; white-space: pre-wrap; }
+
+.tiger-page .sec { background: #12151a; border: 1px solid #262b33; border-radius: 2px; margin-bottom: 10px; }
+.tiger-page .sec-head { display: flex; align-items: baseline; gap: 10px; padding: 5px 12px; border-bottom: 1px solid #262b33; }
+.tiger-page .sec-head .n { color: #8a939e; font-size: 10px; }
+.tiger-page .sec-head .title { font-size: 11px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: #e9b74f; }
+.tiger-page .sec-head .bullet { margin-left: auto; color: #8a939e; font-size: 10px; letter-spacing: .06em; text-transform: uppercase; text-align: right; }
+.tiger-page .sec-body { padding: 10px 12px 12px; }
+.tiger-page .note { color: #8a939e; margin-top: 6px; }
+.tiger-page p { margin: 0; }
+
+/* the pipe */
+.tiger-page .pipe { display: flex; flex-wrap: wrap; align-items: stretch; gap: 6px 0; }
+.tiger-page .pipe .node { display: flex; flex-direction: column; justify-content: center; background: #0b0d10; border: 1px solid #262b33; border-radius: 2px; padding: 3px 8px; min-width: 88px; }
+.tiger-page .pipe .node.here { border-color: #e9b74f; }
+.tiger-page .pipe .node .k { display: block; line-height: 13px; }
+.tiger-page .pipe .node .v { display: block; white-space: nowrap; }
+.tiger-page .pipe .arrow { display: flex; align-items: center; padding: 0 5px; color: #8a939e; }
+
+/* the SQL console */
+.tiger-page .presets { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-bottom: 8px; }
+.tiger-page .b { font: inherit; font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: #d7dde5; background: #0b0d10; border: 1px solid #262b33; border-radius: 2px; padding: 2px 9px; cursor: pointer; line-height: 17px; }
+.tiger-page .b:hover { border-color: #8a939e; }
+.tiger-page .b.on { color: #e9b74f; border-color: #e9b74f; }
+.tiger-page .b.run { color: #0b0d10; background: #e9b74f; border-color: #e9b74f; font-weight: 700; }
+.tiger-page .b:disabled { opacity: .5; cursor: default; }
+.tiger-page .sql { display: block; width: 100%; min-height: 92px; font: inherit; color: #d7dde5; background: #0b0d10; border: 1px solid #262b33; border-radius: 2px; padding: 7px 9px; resize: vertical; outline: none; }
+.tiger-page .sql:focus { border-color: #8a939e; }
+.tiger-page .cfoot { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-top: 8px; }
+.tiger-page .result { margin-top: 8px; max-height: 320px; overflow: auto; background: #0b0d10; border: 1px solid #262b33; border-radius: 2px; }
+.tiger-page .rs { width: 100%; border-collapse: collapse; }
+.tiger-page .rs th { position: sticky; top: 0; z-index: 1; background: #12151a; text-align: left; font-size: 10px; letter-spacing: .06em; text-transform: uppercase; color: #8a939e; font-weight: 500; padding: 4px 8px; border-bottom: 1px solid #262b33; white-space: nowrap; }
+.tiger-page .rs td { padding: 2px 8px; border-bottom: 1px solid #1a1e25; white-space: nowrap; }
+.tiger-page .rs td.num { text-align: right; }
+.tiger-page .rs td.nul { color: #4a525c; }
+.tiger-page .rs tr:last-child td { border-bottom: 0; }
+.tiger-page .err { color: #e0443e; white-space: pre-wrap; }
+
+/* the schema */
+.tiger-page .schema { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 8px; margin-bottom: 8px; }
+.tiger-page .tbl { background: #0b0d10; border: 1px solid #262b33; border-radius: 2px; padding: 6px 10px; }
+.tiger-page .tbl .name { color: #4da3ff; font-weight: 700; }
+.tiger-page .tbl .cnt { font-size: 18px; font-weight: 600; line-height: 24px; margin: 2px 0; }
+
+/* aggregates and the door chart */
+.tiger-page .aggs { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0; }
+.tiger-page .agg { background: #0b0d10; border: 1px solid #262b33; border-radius: 2px; padding: 2px 8px; }
+.tiger-page .chart .space { margin: 8px 0 2px; }
+.tiger-page .chart .brow { display: grid; grid-template-columns: 96px 1fr 104px; align-items: center; gap: 8px; height: 16px; }
+.tiger-page .chart .brow > *, .tiger-page .chart .space { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tiger-page .chart .track { position: relative; height: 9px; background: #0b0d10; border: 1px solid #262b33; }
+.tiger-page .chart .fill { position: absolute; left: 0; top: 0; bottom: 0; }
+.tiger-page .chart .limit { position: absolute; top: -3px; bottom: -3px; width: 1px; background: #e9b74f; }
+.tiger-page .chart .axis { display: grid; grid-template-columns: 96px 1fr 104px; gap: 8px; margin-top: 6px; }
+.tiger-page .chart .axis .ax { position: relative; height: 14px; }
+.tiger-page .chart .axis .ax span { position: absolute; transform: translateX(-50%); white-space: nowrap; }
+.tiger-page .chart .axis .ax span.end { transform: translateX(-100%); }
+
+/* the compression meter */
+.tiger-page .bigs { display: flex; flex-wrap: wrap; gap: 8px 28px; margin-bottom: 10px; }
+.tiger-page .bigs .big { font-size: 22px; font-weight: 600; line-height: 26px; }
+.tiger-page .meter { display: grid; grid-template-columns: 90px 1fr 110px; gap: 6px 10px; align-items: center; }
+.tiger-page .mbar { position: relative; height: 12px; background: #0b0d10; border: 1px solid #262b33; }
+.tiger-page .mbar i { display: block; height: 100%; }
+
+/* two-column bits on wide screens */
+.tiger-page .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+@media (max-width: 820px) { .tiger-page .cols { grid-template-columns: 1fr; } }
+
+/* History.tsx (shared, not edited) restyled for the dark page */
+.tiger .history.sheet { background: #0b0d10; border: 1px solid #262b33; border-radius: 2px; }
+.tiger .history .sheet-head { display: flex; align-items: center; gap: 10px; min-height: 0; padding: 4px 10px; background: #12151a; border-bottom: 1px solid #262b33; }
+.tiger .history h2 { margin: 0; font: inherit; font-size: 10px; letter-spacing: .08em; text-transform: uppercase; color: #8a939e; }
+.tiger .history .meta { font: inherit; font-size: 10px; color: #8a939e; }
+.tiger .history .tag { height: 16px; padding: 0 5px; font: inherit; font-size: 10px; letter-spacing: .08em; text-transform: uppercase; color: #e9b74f; background: transparent; border: 1px solid #e9b74f; border-radius: 2px; }
+.tiger .history .tag::before { display: none; }
+.tiger .hist { width: 100%; border-collapse: collapse; font: inherit; }
+.tiger .hist th { text-align: left; font: inherit; font-size: 10px; letter-spacing: .06em; text-transform: uppercase; color: #8a939e; font-weight: 500; padding: 4px 10px; border-bottom: 1px solid #262b33; white-space: nowrap; }
+.tiger .hist td { padding: 2px 10px; border-bottom: 1px solid #1a1e25; white-space: nowrap; color: #d7dde5; }
+.tiger .hist tr:last-child td { border-bottom: 0; }
+.tiger .hist th:not(:first-child), .tiger .hist td:not(:first-child) { width: 64px; text-align: right; }
+.tiger .hist td.red { color: #e0443e; }
+.tiger .hist td.green { color: #3ddc84; }
+.tiger .hist td.muted { color: #8a939e; }

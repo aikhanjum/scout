@@ -46,8 +46,19 @@ export function connect(source: Source) {
   if (ws) { ws.onclose = null; ws.onmessage = null; ws.close(); ws = null; }
   eventLog = []; telemLog = []; fileStartedAt = ''; lastRecording = null;
   store().set({ source, link: 'down', detail: '', fw: '', telem: null, map: null, trail: [], events: [], run: NO_RUN });
-  if (source.kind === 'live') openSocket(source.url, generation, true);
+  if (source.kind === 'live') openSocket(sameOrigin(source.url), generation, true);
   else void playFile(source, generation);
+}
+
+// Through the tunnel (tools/tunnel.sh) or on a phone the page and the robot share one origin:
+// Vite proxies /ws, /status, /cmd, /map, /photo and /runs/latest to Scout (vite.config.ts). So
+// the default address, which means "the robot next to this laptop", becomes the page's own host
+// whenever the page is not on localhost; the /status URL follows, as fetchStatus derives it from
+// the socket URL. A typed address is left alone.
+function sameOrigin(url: string) {
+  const h = location.hostname;
+  if (url !== 'ws://localhost:8080/ws' || h === 'localhost' || h === '127.0.0.1') return url;
+  return `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws`;
 }
 
 export function send(cmd: Command) {

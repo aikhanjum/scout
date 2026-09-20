@@ -1,5 +1,5 @@
 {
- "generated_at": "2026-09-20T02:08:36Z",
+ "generated_at": "2026-09-20T02:42:27Z",
  "bucket": "15 minutes",
  "includes_simulated": false,
  "spaces": [
@@ -13,6 +13,40 @@
      "min_clearance_mm": 419,
      "fails": 7,
      "empty_share": 0.6388
+    }
+   ]
+  },
+  {
+   "space": "E7 6th floor bathroom route, walk 2",
+   "buckets": [
+    {
+     "start": "2026-09-20T02:15:00Z",
+     "runs": 1,
+     "frames": 844,
+     "min_clearance_mm": 312,
+     "fails": 8,
+     "empty_share": 0.6315
+    },
+    {
+     "start": "2026-09-20T02:30:00Z",
+     "runs": 1,
+     "frames": 1301,
+     "min_clearance_mm": 247,
+     "fails": 30,
+     "empty_share": 0.5537
+    }
+   ]
+  },
+  {
+   "space": "E7 6th floor room loop",
+   "buckets": [
+    {
+     "start": "2026-09-20T02:30:00Z",
+     "runs": 1,
+     "frames": 1578,
+     "min_clearance_mm": 309,
+     "fails": 29,
+     "empty_share": 0.4706
     }
    ]
   }

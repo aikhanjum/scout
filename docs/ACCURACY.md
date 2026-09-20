@@ -33,6 +33,19 @@ Verdict: SLAM did not follow the walk. It lost the corridor (the flat-surface ga
 
 Next attempt, to change one thing at a time: a slow walk, lidar held clear of the body, two seconds still in each doorway.
 
+## Walk 2 and the room loop, same evening
+
+| | walk 2, corridor, slow, lidar in both hands | room loop, bathroom, lidar on one palm |
+| --- | --- | --- |
+| scans with a pose | 75%, longest blackout 10 s | 93%, longest blackout 2 s |
+| farthest point SLAM placed the lidar | 4.7 m (route 11 to 15 m) | 6.8 m (a bathroom) |
+| final pose, lidar back at the start | 0.36 m off but 103 degrees turned: a re-lock onto the start room, not tracking | 5.25 m off, 36 degrees turned: tracking was confident and wrong |
+| path length SLAM drew | 72 m for a ~25 m round trip | 71 m for a small loop |
+| empty beams, median | 58% | 47% |
+| width verdicts | 38 fails of 260 to 280 mm "wall-wall" and no pass: the carrier's hands 13 to 17 cm either side were the walls | passes of 909, 921, 956, 973 mm on the bathroom door (tape not taken); fails of 150 to 360 mm inside, plausibly stalls and fixtures, not verified |
+
+Verdict after three real attempts (brisk corridor, slow corridor, small room): SLAM did not follow the lidar in any of them. Do not demo a live map from it. Clearance verdicts are real when nothing is beside the sensor: carry it on a box or a flat palm from below, never by the sides.
+
 ## Lidar, what it sees
 
 - Empty beams: 31% of the ring at the desk, 65% in the corridor. The clearance audit refuses a side that is more than 60% empty, so it produced a number on 100% of frames in the desk doorway and on 12% of frames along the corridor.

@@ -86,6 +86,9 @@ def main():
         log.warning("CAMERA DISABLED (SCOUT_CAMERA=none): obstacles will be reported as 'unknown'")
 
     cfg = dict(config.CONFIG)
+    if config.MASK_BEHIND_DEG:
+        log.info("MASK: ignoring returns within %d degrees of straight behind (a carrier's body). "
+                 "SCOUT_MASK_BEHIND_DEG=0 when Scout drives itself.", config.MASK_BEHIND_DEG)
     scout = Scout(motor, lidar, camera, _pose_engine(), Grid(), Audit(cfg), WallFollow(cfg), cfg)
     log.info("serving http://%s:%d  ws://%s:%d/ws  (also localhost)", _ip(), config.PORT, _ip(), config.PORT)
     try:

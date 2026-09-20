@@ -37,3 +37,10 @@ CONFIG = {
     "wall_target_mm": _env("SCOUT_WALL_TARGET_MM", 300.0, float),
     "cruise": _env("SCOUT_CRUISE", 0.4, float),
 }
+
+# When a person carries the lidar, their body sits at the same place behind it in every scan. Left
+# in, slam stamps it into the map at every keyframe and then matches the next scan against that
+# stamp, dragging the pose backwards. This zeroes the bins within this many degrees of straight
+# behind before the scan reaches pose, map and the wire. 0 = off (the robot drives itself). 35
+# covers a person holding it at chest height.
+MASK_BEHIND_DEG = _env("SCOUT_MASK_BEHIND_DEG", 0, int)

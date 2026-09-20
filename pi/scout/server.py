@@ -246,6 +246,10 @@ class Scout:
         while True:
             now = time.monotonic()
             scan = list(self.lidar.scan) if self.lidar.connected else []
+            if scan and config.MASK_BEHIND_DEG:
+                # the carrier's body: see config.MASK_BEHIND_DEG. Masked bins are plain no-returns.
+                for d in range(180 - config.MASK_BEHIND_DEG, 180 + config.MASK_BEHIND_DEG + 1):
+                    scan[d % 360] = 0
             # Whether Scout is moving decides if a failed fit may hold the last pose. With no ESP32
             # there is nothing reporting wheel speed, so assume it is moving: holding a pose that
             # is only valid while stationary, for a lidar someone is carrying across the room, puts

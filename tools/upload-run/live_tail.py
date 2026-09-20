@@ -146,6 +146,7 @@ class Tail(threading.Thread):
         self.live = {}                       # the last document written, also served at /tiger/live
         self.round, self.slow, self.cache = 0, {}, {}
         self.flush_ms = self.rows_last = 0
+        self.last_flush_at = 0.0
         self.stats_fn = "hypertable_columnstore_stats"   # main() checks which one this server has
 
     # -- called from the websocket task
@@ -227,7 +228,11 @@ class Tail(threading.Thread):
                 self.buf.popleft()
             self.frames_buffered -= sum(bool(t) for _, t, _ in batch)
         self.n_scan += len(scans); self.n_telem += len(telem); self.n_events += len(events)
-        self.rows_last = len(scans) + len(telem) + len(events)
+        # rows per second of wall clock since the previous flush landed, so a slow link (a 4 s COPY over
+        # a phone hotspot carries 4 s of frames) still reads as the true average rate, not a burst
+        now = time.time()
+        self.rows_last = round((len(scans) + len(telem) + len(events)) / max(now - (self.last_flush_at or t0), 1.0))
+        self.last_flush_at = now
 
     # -- stats: each query timed; one that took over SLOW_MS runs every fifth round and its value is reused between
     def q(self, name, sql, params=None):

@@ -8,8 +8,8 @@
   --brand: #e9b74f; --brand-deep: #b5841f; --brand-ink: #5a4310; --brand-soft: #fbf0d2;
   --fail: #c93535; --fail-ink: #b32e2e; --fail-soft: #fbe3e1; --pass: #237a4a; --pass-ink: #1f6b41; --pass-soft: #def2e6;
   --scan: #23807b; --focus: #2b2925;
-  --sans: 'IBM Plex Sans Variable', system-ui, -apple-system, 'Segoe UI', sans-serif;
-  --mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  --sans: var(--mono);   /* one font everywhere: the Mac terminal's */
+  --mono: ui-monospace, 'SF Mono', Menlo, Monaco, monospace;
 }
 * { box-sizing: border-box; }
 html { -webkit-tap-highlight-color: transparent; }
@@ -172,4 +172,4 @@ main { padding: 16px 20px 24px; display: grid; gap: 16px; }
 }
 
 /* stubs while the terminal is being built; every stub is replaced before the demo */
-.stub { padding: 8px; border: 1px dashed #888; font-family: ui-monospace, Menlo, monospace; font-size: 13px; }
+.stub { padding: 8px; border: 1px dashed #888; font-family: var(--mono); font-size: 13px; }

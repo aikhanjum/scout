@@ -116,18 +116,11 @@ async function fetchStatus(wsUrl: string, gen: number, fresh = false) {
   try {
     const st: Status = await (await fetch(`${httpOrigin(wsUrl)}/status`)).json();
     if (gen !== generation) return;
-    const d = st.devices ?? { esp32: false, lidar: false, camera: false };
-    // `esp32` is protocol v2's old name for `motor` and Scout sends both; report it once.
-    // `camera` is always false: Scout has no camera, so its absence is not news.
-    const missing = Object.entries(d)
-      .filter(([k, ok]) => !ok && k !== 'camera' && !(k === 'esp32' && 'motor' in d))
-      .map(([k]) => k);
-    // The firmware and the address are not news; a missing device and a protocol mismatch are.
-    // RUNBOOK section 1 checks `devices` with curl, which is where the full picture belongs.
+    // Only a protocol mismatch is news here. Missing devices show in the terminal's STATUS tile
+    // (lidar on/off, mode) and RUNBOOK section 1 checks `devices` with curl.
     store().set({
       fw: st.fw ?? '',
-      detail: (missing.length ? `no ${missing.join('/')}` : '')
-        + (st.proto !== PROTO ? `${missing.length ? '  ' : ''}proto ${st.proto}, expected ${PROTO}` : ''),
+      detail: st.proto !== PROTO ? `proto ${st.proto}, expected ${PROTO}` : '',
     });
     const active = !!st.run?.active;
     const run = store().run;

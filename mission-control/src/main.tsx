@@ -3,10 +3,6 @@ import { createRoot } from 'react-dom/client';
 import { App } from './App';
 import { useStore } from './store';
 import { connect } from './scout';
-import '@fontsource-variable/ibm-plex-sans';
-import '@fontsource/ibm-plex-mono/400.css';
-import '@fontsource/ibm-plex-mono/500.css';
-import '@fontsource/ibm-plex-mono/600.css';
 import './style.css';
 
 // A render error must never blank the big screen mid-demo.

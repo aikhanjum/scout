@@ -31,6 +31,29 @@ Shared, read-only for everyone: `store.ts`, `protocol.ts`, `verdict.ts`, `scout.
 `/tiger/query` (Vite proxies to `127.0.0.1:8787`, served by `live_tail.py`, read-only transaction, credential never leaves the process):
 `POST {"sql": "..."}` or `GET /tiger/query?preset=<name>` -> `{"columns":[...],"rows":[[...]],"ms":12,"error":""}`. Presets: `rows`, `compression`, `door_history`, `aggregates`, `latest_verdicts`.
 
+## Live tail (Tiger, one URL for phones and judges)
+
+Both need `TIGER_URL` in the repo-root `.env` (never printed). Python from `npm run setup:tiger` (adds websockets and aiohttp).
+
+```
+# 1. the tailer: every /ws frame into Tiger once a second, stats to data/live/tiger.json, /tiger/* on 127.0.0.1:8787
+tools/upload-run/.venv/bin/python tools/upload-run/live_tail.py --ws ws://localhost:8080/ws --status http://localhost:8080/status \
+    --space "E7 6th floor" --out data/live/tiger.json --serve 127.0.0.1:8787
+#    fake robot instead (PORT=8090 npm run fake): --ws ws://localhost:8090/ws --status http://localhost:8090/status; fw fake* is tagged simulated
+#    Ctrl-C: final flush, runs.ended_at, loose chunks compressed, session rows and the on-disk ratio printed
+
+# 2. the dashboard, proxying /ws /status /cmd /map /photo /runs/latest to Scout and /tiger to the tailer
+cd mission-control && npm run dev                        # SCOUT_HOST=scout.local:8080 TAIL_HOST=127.0.0.1:8787 override the targets
+
+# 3. the tunnel: prints https://<random>.trycloudflare.com, writes data/live/tunnel.json, Ctrl-C removes it
+tools/tunnel.sh 5173
+
+curl -s localhost:5173/tiger/health; curl -s 'localhost:5173/tiger/query?preset=rows'
+curl -s localhost:5173/tiger/query -d '{"sql":"select count(*) from scan"}'    # read-only, one statement, 3 s, 200 rows
+```
+
+The first start on a database without `telem_1s`/`scan_1s` creates them and materialises their history once (about two minutes over 2 M rows); every later start is seconds.
+
 ## Look
 Dark, dense, default monospace (`ui-monospace, Menlo, Consolas, monospace`), no gradients, no rounded corners over 2 px, no animation except the drive keys lighting on press. Colours: bg `#0b0d10`, panel `#12151a`, rule `#262b33`, fg `#d7dde5`, dim `#8a939e`, amber `#e9b74f`, red `#e0443e`, green `#3ddc84`, blue `#4da3ff`. Every panel has a one-word uppercase label in dim. Numbers in the fg colour, big where they matter.
 

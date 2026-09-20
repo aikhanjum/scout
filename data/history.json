@@ -1,18 +1,18 @@
 {
- "generated_at": "2026-09-19T20:02:40Z",
- "bucket": "15 minute",
- "includes_simulated": true,
+ "generated_at": "2026-09-20T02:08:36Z",
+ "bucket": "15 minutes",
+ "includes_simulated": false,
  "spaces": [
   {
-   "space": "E5 room 2024",
+   "space": "E7 6th floor bathroom route and bathroom",
    "buckets": [
     {
-     "start": "2026-09-19T12:00:00Z",
+     "start": "2026-09-20T02:00:00Z",
      "runs": 1,
-     "frames": 660,
-     "min_clearance_mm": 502,
-     "fails": 1,
-     "empty_share": 0.0
+     "frames": 1467,
+     "min_clearance_mm": 419,
+     "fails": 7,
+     "empty_share": 0.6388
     }
    ]
   }

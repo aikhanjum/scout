@@ -16,6 +16,8 @@ Tables (all rows carry run_id and simulated):
   events  hypertable: every event frame, real timestamp
   telem   hypertable, columnstore: clearance, pose, mode, empty lidar returns per frame
   scan    hypertable, columnstore: one row per degree per frame (time, deg, range_mm), segmented by run
+Continuous aggregates telem_15m, events_15m and scan_15m (15-minute buckets per run) feed the history
+rollup and are refreshed after every upload and by a policy every 10 minutes.
 Real timestamps are started_at + (t - started_t). Files without started_at (before protocol v2.1)
 use the file's modification time as the end of the run, and say so in runs.time_source.
 """
@@ -99,29 +101,74 @@ CREATE OR REPLACE VIEW telem_real  AS SELECT * FROM telem  WHERE NOT simulated;
 HISTORY_SQL = """
 SELECT a.space, a.bucket, a.runs, a.frames, a.min_clearance, coalesce(b.fails, 0) AS fails, c.empty_share
 FROM (
-    SELECT r.space, time_bucket(%(bucket)s::interval, t.time) AS bucket,
-           count(DISTINCT t.run_id) AS runs, count(*) AS frames,
-           min(t.clearance_mm) FILTER (WHERE t.clearance_mm > 0) AS min_clearance
-    FROM telem t JOIN runs r USING (run_id)
-    WHERE NOT r.simulated OR %(sim)s
+    SELECT space, time_bucket(%(bucket)s::interval, bucket) AS bucket,
+           count(DISTINCT run_id)::int AS runs, sum(frames)::bigint AS frames, min(min_clearance)::int AS min_clearance
+    FROM telem_15m WHERE NOT simulated OR %(sim)s
     GROUP BY 1, 2
 ) a
 LEFT JOIN (
-    SELECT r.space, time_bucket(%(bucket)s::interval, e.time) AS bucket,
-           count(*) FILTER (WHERE e.kind LIKE '%%fail') AS fails
-    FROM events e JOIN runs r USING (run_id)
-    WHERE NOT r.simulated OR %(sim)s
+    SELECT space, time_bucket(%(bucket)s::interval, bucket) AS bucket, sum(fails)::bigint AS fails
+    FROM events_15m WHERE NOT simulated OR %(sim)s
     GROUP BY 1, 2
 ) b ON a.space = b.space AND a.bucket = b.bucket
 LEFT JOIN (
-    SELECT r.space, time_bucket(%(bucket)s::interval, s.time) AS bucket,
-           avg((s.range_mm = 0)::int) AS empty_share
-    FROM scan s JOIN runs r USING (run_id)
-    WHERE NOT r.simulated OR %(sim)s
+    SELECT r.space, time_bucket(%(bucket)s::interval, s.bucket) AS bucket,
+           sum(s.empty)::float / nullif(sum(s.samples), 0) AS empty_share
+    FROM scan_15m s JOIN runs r USING (run_id) WHERE NOT s.simulated OR %(sim)s
     GROUP BY 1, 2
 ) c ON a.space = c.space AND a.bucket = c.bucket
 ORDER BY a.space, a.bucket
 """
+
+# Continuous aggregates: 15-minute buckets per run, kept up to date by TimescaleDB. The history
+# rollup reads these instead of the raw tables, and re-buckets them to whatever --bucket asks for.
+CAGG_SQL = [
+    """CREATE MATERIALIZED VIEW IF NOT EXISTS telem_15m WITH (timescaledb.continuous) AS
+       SELECT time_bucket('15 minutes', time) AS bucket, run_id, space, simulated,
+              count(*) AS frames, min(NULLIF(clearance_mm, 0)) AS min_clearance,
+              sum(empty_returns) AS empty_returns
+       FROM telem GROUP BY 1, 2, 3, 4 WITH NO DATA""",
+    """CREATE MATERIALIZED VIEW IF NOT EXISTS events_15m WITH (timescaledb.continuous) AS
+       SELECT time_bucket('15 minutes', time) AS bucket, run_id, space, simulated,
+              count(*) AS events, sum((kind LIKE '%fail')::int) AS fails
+       FROM events GROUP BY 1, 2, 3, 4 WITH NO DATA""",
+    """CREATE MATERIALIZED VIEW IF NOT EXISTS scan_15m WITH (timescaledb.continuous) AS
+       SELECT time_bucket('15 minutes', time) AS bucket, run_id, simulated,
+              count(*) AS samples, sum((range_mm = 0)::int) AS empty
+       FROM scan GROUP BY 1, 2, 3 WITH NO DATA""",
+]
+CAGGS = ("telem_15m", "events_15m", "scan_15m")
+
+
+def ensure_caggs(conn):
+    """Create the continuous aggregates and their refresh policies if missing. Needs autocommit."""
+    with conn.cursor() as cur:
+        for sql in CAGG_SQL:
+            cur.execute(sql)
+        for name in CAGGS:
+            cur.execute("SELECT add_continuous_aggregate_policy(%s, start_offset => INTERVAL '90 days', "
+                        "end_offset => INTERVAL '1 minute', schedule_interval => INTERVAL '10 minutes', if_not_exists => true)", (name,))
+
+
+def refresh_caggs(conn):
+    """Materialise everything now, so a just-uploaded run is in the rollup immediately. Needs autocommit."""
+    with conn.cursor() as cur:
+        for name in CAGGS:
+            cur.execute(f"CALL refresh_continuous_aggregate('{name}', NULL, NULL)")
+
+
+def bucket_interval(spec):
+    """'15m' | '1h' | '1d' -> a Postgres interval string, never finer than the 15-minute aggregates."""
+    m = re.match(r"^\s*(\d+)\s*(m|min|minutes?|h|hours?|d|days?)\s*$", spec or "1h")
+    if not m:
+        raise SystemExit(f"bad --bucket {spec!r}: use 15m, 1h, 1d")
+    n, unit = int(m.group(1)), m.group(2)[0]
+    minutes = n * {"m": 1, "h": 60, "d": 1440}[unit]
+    if minutes < 15:
+        print(f"bucket {spec} is finer than the 15-minute aggregates; using 15m")
+        n, unit = 15, "m"
+    word = dict(m="minute", h="hour", d="day")[unit]
+    return f"{n} {word}{'' if n == 1 else 's'}"
 
 
 # ---------------------------------------------------------------- connection, never printed
@@ -232,12 +279,30 @@ def copy_rows(cur, table, cols, rows):
 
 
 def to_columnstore(conn, table):
-    """Convert every chunk of a hypertable to columnstore now, instead of waiting for the policy."""
+    """Pack every chunk of a hypertable fully into columnstore now.
+
+    Rows inserted into an already-compressed chunk sit in it poorly packed, and a recompress-in-place
+    left the scan table at 7.6 MB where a full repack gives 1.7 MB. So decompress and compress each
+    chunk whole: seconds at our sizes, and the number printed afterwards is the real one."""
     with conn.cursor() as cur:
         chunks = [c for (c,) in cur.execute(f"SELECT show_chunks('{table}')")]
         for c in chunks:
-            cur.execute("CALL convert_to_columnstore(%s::regclass, if_not_columnstore := true, recompress := true)", (c,))
+            cur.execute("SELECT decompress_chunk(%s::regclass, if_compressed => true)", (c,))
+            cur.execute("SELECT compress_chunk(%s::regclass, if_not_compressed => true)", (c,))
     return len(chunks)
+
+
+def disk_ratio(conn, table):
+    """(rows, uncompressed_estimate_bytes, on_disk_bytes): rows times the average tuple size, against
+    hypertable_size, which is what the storage bill sees."""
+    with conn.cursor() as cur:
+        rows = cur.execute(f"SELECT count(*) FROM {table}").fetchone()[0]
+        if not rows:
+            return 0, 0, 0
+        sample = "TABLESAMPLE SYSTEM (10)" if rows > 200000 else ""
+        avg = cur.execute(f"SELECT avg(pg_column_size({table}.*)) FROM {table} {sample}").fetchone()[0]
+        disk = cur.execute(f"SELECT hypertable_size('{table}')").fetchone()[0]
+        return rows, int(rows * float(avg or 0)), int(disk)
 
 
 def compression_stats(conn, table):
@@ -301,12 +366,14 @@ def cmd_upload(args, url):
             conn.autocommit = True
             for table in ("scan", "telem"):
                 n = to_columnstore(conn, table)
+                rows, est, disk = disk_ratio(conn, table)
                 st = compression_stats(conn, table)
-                if st and st[0] and st[1]:
-                    print(f"  {table}: {n} chunk(s) in columnstore, {fmt_bytes(st[0])} -> {fmt_bytes(st[1])}, "
-                          f"compression ratio {st[0] / st[1]:.1f}x")
-                else:
-                    print(f"  {table}: {n} chunk(s) in columnstore, stats not available yet")
+                by_stats = f", {st[0] / st[1]:.1f}x by chunk stats" if st and st[0] and st[1] else ""
+                print(f"  {table}: {n} chunk(s) in columnstore, {rows:,} rows, {fmt_bytes(est)} uncompressed -> "
+                      f"{fmt_bytes(disk)} on disk, compression ratio {est / disk:.1f}x{by_stats}")
+            ensure_caggs(conn)
+            refresh_caggs(conn)
+            print(f"  continuous aggregates refreshed: {', '.join(CAGGS)}")
         print(f"done in {time.time() - t0:.1f} s")
         if not args.no_history:
             cmd_history(args, url)
@@ -318,15 +385,18 @@ def cmd_upload(args, url):
 # ---------------------------------------------------------------- history
 def cmd_history(args, url):
     out = Path(args.out) if getattr(args, "out", None) else DEFAULT_HISTORY
-    bucket = getattr(args, "bucket", None) or "1h"
-    bucket = {"h": " hour", "m": " minute", "d": " day"}.get(bucket[-1], "") and re.sub(r"([hmd])$", lambda m: {"h": " hour", "m": " minute", "d": " day"}[m.group(1)], bucket) or bucket
-    with connect(url) as conn, conn.cursor() as cur:
-        rows = cur.execute(HISTORY_SQL, {"bucket": bucket, "sim": bool(args.simulated)}).fetchall()
+    bucket = bucket_interval(getattr(args, "bucket", None))
+    with connect(url) as conn:
+        conn.autocommit = True
+        ensure_caggs(conn)
+        refresh_caggs(conn)
+        with conn.cursor() as cur:
+            rows = cur.execute(HISTORY_SQL, {"bucket": bucket, "sim": bool(args.simulated)}).fetchall()
     spaces = {}
     for space, start, runs, frames, min_c, fails, empty in rows:
         spaces.setdefault(space, []).append({
             "start": start.astimezone(timezone.utc).isoformat().replace("+00:00", "Z"),
-            "runs": runs, "frames": frames, "min_clearance_mm": min_c, "fails": fails,
+            "runs": int(runs), "frames": int(frames), "min_clearance_mm": int(min_c) if min_c is not None else None, "fails": int(fails),
             "empty_share": round(float(empty), 4) if empty is not None else None,
         })
     doc = {"generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z"),
@@ -350,9 +420,15 @@ def cmd_status(args, url):
                 print(f"  {t}: not created yet")
                 continue
             n = cur.execute(f"select count(*) from {t}").fetchone()[0]
-            st = compression_stats(conn, t) if t in ("telem", "scan") else None
-            extra = f", columnstore {fmt_bytes(st[0])} -> {fmt_bytes(st[1])} ({st[0] / st[1]:.1f}x)" if st and st[0] and st[1] else ""
+            extra = ""
+            if t in ("telem", "scan") and n:
+                rows, est, disk = disk_ratio(conn, t)
+                extra = f", {fmt_bytes(est)} uncompressed -> {fmt_bytes(disk)} on disk ({est / disk:.1f}x)"
             print(f"  {t}: {n} rows{extra}")
+        caggs = cur.execute("select view_name, materialized_only from timescaledb_information.continuous_aggregates order by 1").fetchall()
+        for name, mat_only in caggs:
+            n = cur.execute(f"select count(*) from {name}").fetchone()[0]
+            print(f"  {name}: continuous aggregate, {n} rows{'' if mat_only else ', real-time'}")
         if "runs" in have:
             for r in cur.execute("select space, started_at, ended_at - started_at, simulated, time_source, file from runs order by started_at"):
                 print(f"  run: {r[0]!r} {r[1]:%Y-%m-%d %H:%M}Z {r[2].total_seconds():.0f} s {'SIMULATED' if r[3] else 'real'} time from {r[4]} ({r[5]})")

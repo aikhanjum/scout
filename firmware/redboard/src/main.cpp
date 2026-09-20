@@ -38,10 +38,21 @@ const uint8_t M2_A = 1, M2_B = 4;
 const uint8_t M3_A = 5, M3_B = 7;
 const uint8_t M4_A = 0, M4_B = 6;
 
-// Which motors make up each side, and which way round they are. If a side drives backwards,
-// flip its sign here rather than anywhere else: the protocol's sign convention is fixed.
-const int8_t LEFT_SIGN  = +1;
-const int8_t RIGHT_SIGN = +1;
+// The four shield terminals, in order M1, M2, M3, M4.
+const uint8_t M_A[4]   = {M1_A, M2_A, M3_A, M4_A};
+const uint8_t M_B[4]   = {M1_B, M2_B, M3_B, M4_B};
+const uint8_t M_PWM[4] = {PWM_M1, PWM_M2, PWM_M3, PWM_M4};
+
+// Which side each motor drives, and which way round it is wired.
+//
+// ONE SIGN PER MOTOR, not one per side. Nothing forces the two motors on a side to be wired with
+// matching polarity -- whoever screwed the leads into the terminal block chose, per motor, and on
+// this chassis they did not all choose the same. A per-side sign cannot express that, and the
+// symptom is exactly what it looks like: "forward" turns some wheels forward and others backward.
+// Flip the offending motor to -1 here and nowhere else; the protocol's sign convention is fixed.
+// Find them with the "t" self-test, which runs each motor FORWARD in turn and names it.
+const int8_t M_SIGN[4] = { +1, +1, +1, +1 };            // M1, M2, M3, M4
+const bool   M_LEFT[4] = { true, true, false, false };  // M1+M2 left, M3+M4 right
 
 const unsigned long WATCHDOG_MS = 600;
 const int DUTY_FLOOR = 70;
@@ -86,10 +97,7 @@ static void drive(int l, int r) {
   if (r >  DUTY_MAX) r =  DUTY_MAX;
   if (r < -DUTY_MAX) r = -DUTY_MAX;
   cur_l = l; cur_r = r;
-  motor(M1_A, M1_B, PWM_M1, LEFT_SIGN  * l);
-  motor(M2_A, M2_B, PWM_M2, LEFT_SIGN  * l);
-  motor(M3_A, M3_B, PWM_M3, RIGHT_SIGN * r);
-  motor(M4_A, M4_B, PWM_M4, RIGHT_SIGN * r);
+  for (uint8_t i = 0; i < 4; i++) motor(M_A[i], M_B[i], M_PWM[i], M_SIGN[i] * (M_LEFT[i] ? l : r));
 }
 
 static void ack() {
@@ -98,14 +106,14 @@ static void ack() {
 
 /* Bring-up only: name each motor as it runs, so a human can map motors to wheels. */
 static void self_test() {
-  const uint8_t a[4]   = {M1_A, M2_A, M3_A, M4_A};
-  const uint8_t b[4]   = {M1_B, M2_B, M3_B, M4_B};
-  const uint8_t pwm[4] = {PWM_M1, PWM_M2, PWM_M3, PWM_M4};
+  // FORWARD ONLY, one motor at a time, with a gap long enough to say which wheel moved out loud.
+  // Running each motor both ways told you which wheel was which but not which way round it was
+  // wired, which is the thing that actually needs fixing. Every wheel should turn the way the
+  // robot drives forward; any that does not gets -1 in M_SIGN above.
   for (uint8_t i = 0; i < 4; i++) {
-    Serial.print(F("test M")); Serial.println(i + 1);
-    motor(a[i], b[i], pwm[i], 150);  delay(700);
-    motor(a[i], b[i], pwm[i], -150); delay(700);
-    motor(a[i], b[i], pwm[i], 0);    delay(250);
+    Serial.print(F("test M")); Serial.print(i + 1); Serial.println(F(" forward"));
+    motor(M_A[i], M_B[i], M_PWM[i], M_SIGN[i] * 150); delay(1500);
+    motor(M_A[i], M_B[i], M_PWM[i], 0);               delay(1200);
   }
   drive(0, 0);
   last_cmd_ms = millis();

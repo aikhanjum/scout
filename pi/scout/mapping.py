@@ -24,7 +24,7 @@ WALL_TOL_MM = 250        # occupied cells this close to a fitted wall are the wa
 MIN_CLUSTER_CELLS = 3    # smaller than this is noise (3 cells at 50 mm is about 80 mm across)
 MERGE_MM = 500           # a cluster this close to one already reported is the same object
 MAX_OBJECT_MM = 1200     # with no fitted room, a run of cells longer than this is a wall, not a thing
-CLAIM_MM = 1200          # how near Scout must have come for a cluster to be worth reporting
+CLAIM_MM = 650           # how near Scout must come for a cluster to be reported: the camera's old stopping distance
 SETTLE_SCANS = 10        # scans a cluster must stop growing for before it is claimed (1 s at 10 Hz)
 
 
@@ -230,6 +230,12 @@ class Grid:
                 pending[(x, y)] = (cells, steady)
         self._pending = pending      # a cluster that went out of range or merged drops its wait
         return out
+
+    def confirming(self):
+        """True while a cluster is inside claim range and waiting out its settle: something nearby
+        is about to be reported. The wire calls this `measuring`, and the dashboard's ring goes
+        gold on it. It never stops the motors."""
+        return bool(self._pending)
 
     def nearest_reported(self, x, y):
         """The reported obstacle closest to a point, or None. Used to say whether a pinch is

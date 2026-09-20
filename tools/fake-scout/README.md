@@ -41,7 +41,7 @@ The obstacles: a chair in the wall-following lane, a ramp against the far wall, 
 ## Notes
 
 - `drive` is summarised in the log once a second, and the 600 ms teleop watchdog is real: stop resending and the robot stops. So you can see whether the dashboard's resend loop is right.
-- `measuring` is always `false`. It was the camera's pause, and there is no camera.
+- While an obstacle within 650 mm is waiting out its one-second confirmation (`measuring: true`, the dashboard's ring turns gold) `drive` is accepted but the motors stay stopped, as on the real robot. Scout moves again the tick the pin lands.
 - `/runs/latest` is the run buffer in both modes: every event, telemetry at 2 Hz and the newest map frame, since the last `run start`. Players time frames by `t`, never by rate.
 - `map clear` wipes the grid and lets obstacles be reported and gaps measured again. The dashboard sends it on every page load, so a refresh starts the map over.
 - `/photo/<id>` is always 404 and `devices.camera` is always `false`, as on the robot.

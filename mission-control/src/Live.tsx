@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useStore, type RunState } from './store';
-import { clearBoard, send, sessionEvents, sessionTelemetry, startRecording, stopRecording } from './scout';
+import { clearBoard, send, sessionEvents, sessionRecording, sessionTelemetry, startRecording, stopRecording } from './scout';
 import { widthRule, type ScoutEvent, type Telem } from './protocol';
 import { detail as eventDetail } from './verdict';
 import { MapView, mapImage } from './MapView';
@@ -37,15 +37,15 @@ export function Live() {
   const elapsed = active && run.startT != null && telem ? clock(telem.t - run.startT) : '';
 
   // One run button. Start clears Scout's map and buffer and begins recording frames here. Stop
-  // also stops the motors, so a run never ends with Scout still driving, and saves the recording
-  // as an .ndjson replay file, so every run leaves one behind without a second button.
+  // also stops the motors, so a run never ends with Scout still driving, and closes the recording.
+  // Nothing downloads on its own: the Download menu, live once the run has stopped, hands out the
+  // replay file and everything else on request.
   const toggleRun = () => {
     if (!active) { setPressedAt(Date.now()); startRecording(); send({ cmd: 'run', action: 'start', space: name }); return; }
     send({ cmd: 'run', action: 'stop' });
     send({ cmd: 'stop' });
     set({ run: { ...run, active: false } });
-    const text = stopRecording(name);
-    if (text) download(`${fileStem(name)}.ndjson`, text, 'application/x-ndjson');
+    stopRecording(name);
   };
 
   return (
@@ -57,7 +57,7 @@ export function Live() {
         </button>
         {tag && <span className={`tag ${tag.cls}`} role="status">{tag.text}</span>}
         <button onClick={() => send({ cmd: 'mark', label: 'mark' })}>Mark</button>
-        <Downloads name={name} hasMap={map != null} />
+        <Downloads name={name} hasMap={map != null} active={active} />
         <button className="quiet end" onClick={() => { send({ cmd: 'map', action: 'clear' }); clearBoard(); }}>Clear map</button>
         {tag?.cls === 'bad' && (
           <p className="hint note" role="alert">
@@ -131,7 +131,8 @@ async function saveReport(name: string) {
 
 // The run as files: one page to read, and the tables behind it. Everything since run_start, or
 // since connecting when no run was started. The replay file itself comes with Stop run.
-function Downloads({ name, hasMap }: { name: string; hasMap: boolean }) {
+// Greyed out while a run is going: a download is a snapshot, and the run is not finished until Stop.
+function Downloads({ name, hasMap, active }: { name: string; hasMap: boolean; active: boolean }) {
   const [open, setOpen] = useState(false);
   const wrap = useRef<HTMLDivElement>(null);
   const trigger = useRef<HTMLButtonElement>(null);
@@ -156,6 +157,7 @@ function Downloads({ name, hasMap }: { name: string; hasMap: boolean }) {
   const stem = () => fileStem(name);
   const items: [string, boolean, () => void][] = [
     ['Run report (.html)', hasMap || sessionEvents().length > 0, () => { void saveReport(name); }],
+    ['Replay file (.ndjson)', sessionRecording() != null, () => { const r = sessionRecording(); if (r) download(`${fileStem(r.space)}.ndjson`, r.text, 'application/x-ndjson'); }],
     ['Events (.csv)', sessionEvents().length > 0, () => download(`${stem()}-events.csv`, eventsCsv(sessionEvents()), 'text/csv')],
     ['Telemetry (.csv)', sessionTelemetry().length > 0, () => download(`${stem()}-telemetry.csv`, telemetryCsv(sessionTelemetry()), 'text/csv')],
     ['Map cells (.csv)', hasMap, () => { const m = useStore.getState().map; if (m) download(`${stem()}-map-${m.cell_mm}mm.csv`, mapCsv(m), 'text/csv'); }],
@@ -163,7 +165,7 @@ function Downloads({ name, hasMap }: { name: string; hasMap: boolean }) {
   ];
   return (
     <div className="menu" ref={wrap}>
-      <button ref={trigger} aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen((o) => !o)}>
+      <button ref={trigger} aria-haspopup="menu" aria-expanded={open} disabled={active} title={active ? 'Stop the run first' : undefined} onClick={() => setOpen((o) => !o)}>
         Download
         <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><path d="M1.5 3.5 5 7l3.5-3.5" fill="none" stroke="currentColor" strokeWidth="1.6" /></svg>
       </button>
@@ -270,7 +272,7 @@ const MODE: Record<string, { text: string; cls: string }> = {
 };
 
 function Pad({ drive, telem }: { drive: ReturnType<typeof useDrive>; telem: Telem | null }) {
-  const mode = !telem ? null : MODE[telem.mode] ?? { text: telem.mode, cls: 'plain' };
+  const mode = !telem ? null : telem.measuring ? { text: 'Confirming…', cls: 'warn' } : MODE[telem.mode] ?? { text: telem.mode, cls: 'plain' };
   const b = (d: Dir) => (
     <button aria-label={NAME[d]} onPointerDown={() => drive.press(d)} onPointerUp={() => drive.release(d)} onPointerLeave={() => drive.release(d)}
       onContextMenu={(e) => e.preventDefault()}>

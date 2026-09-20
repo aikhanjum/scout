@@ -14,6 +14,7 @@ let ws: WebSocket | null = null;
 let generation = 0; // bumped by every connect(); callbacks from an older generation are ignored
 let watchdog = 0, reconnectTimer = 0, replayTimer = 0;
 let rec: Frame[] | null = null;
+let lastRecording: { space: string; text: string } | null = null;   // the run last stopped, for the Download menu
 let recStartedAt = ''; // wall clock when REC was pressed: the run header's started_at
 let recLastMap = -Infinity;
 
@@ -25,6 +26,7 @@ let fileStartedAt = '';   // a replay's own wall clock, from its run header. A r
                           // replay carries the date the run happened, not the date it was played.
 export const sessionEvents = () => eventLog;
 export const sessionTelemetry = () => telemLog;
+export const sessionRecording = () => lastRecording;
 
 const store = () => useStore.getState();
 
@@ -42,7 +44,7 @@ export function connect(source: Source) {
   generation += 1;
   clearTimeout(watchdog); clearTimeout(reconnectTimer); clearTimeout(replayTimer);
   if (ws) { ws.onclose = null; ws.onmessage = null; ws.close(); ws = null; }
-  eventLog = []; telemLog = []; fileStartedAt = '';
+  eventLog = []; telemLog = []; fileStartedAt = ''; lastRecording = null;
   store().set({ source, link: 'down', detail: '', fw: '', telem: null, map: null, trail: [], events: [], run: NO_RUN });
   if (source.kind === 'live') openSocket(source.url, generation, true);
   else void playFile(source, generation);
@@ -60,9 +62,10 @@ export function sendConfig() {
   send({ cmd: 'config', width_limit_mm: widthRule(rules)?.limit ?? 860 });
 }
 
-export function startRecording() { rec = []; recStartedAt = new Date().toISOString(); recLastMap = -Infinity; store().set({ recording: true }); }
+export function startRecording() { rec = []; lastRecording = null; recStartedAt = new Date().toISOString(); recLastMap = -Infinity; store().set({ recording: true }); }
 
-// Returns the recording as NDJSON (PROTOCOL.md section 7), or null if there was nothing.
+// Closes the recording and keeps it as NDJSON (PROTOCOL.md section 7) for the Download menu, until the
+// next run starts. Nothing is downloaded here: that is the person's choice, made from the menu.
 export function stopRecording(space: string): string | null {
   const frames = rec; rec = null;
   store().set({ recording: false });
@@ -72,7 +75,9 @@ export function stopRecording(space: string): string | null {
     type: 'run', space, fw: fw || 'unknown', started_t: frames[0].t, started_at: recStartedAt,
     config: { width_limit_mm: widthRule(rules)?.limit ?? 860 },
   };
-  return [header, ...frames].map((x) => JSON.stringify(x)).join('\n') + '\n';
+  const text = [header, ...frames].map((x) => JSON.stringify(x)).join('\n') + '\n';
+  lastRecording = { space, text };
+  return text;
 }
 
 // --- live ---
@@ -113,8 +118,9 @@ async function fetchStatus(wsUrl: string, gen: number, fresh = false) {
     if (gen !== generation) return;
     const d = st.devices ?? { esp32: false, lidar: false, camera: false };
     // `esp32` is protocol v2's old name for `motor` and Scout sends both; report it once.
+    // `camera` is always false: Scout has no camera, so its absence is not news.
     const missing = Object.entries(d)
-      .filter(([k, ok]) => !ok && !(k === 'esp32' && 'motor' in d))
+      .filter(([k, ok]) => !ok && k !== 'camera' && !(k === 'esp32' && 'motor' in d))
       .map(([k]) => k);
     // The firmware and the address are not news; a missing device and a protocol mismatch are.
     // RUNBOOK section 1 checks `devices` with curl, which is where the full picture belongs.

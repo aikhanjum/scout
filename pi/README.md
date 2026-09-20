@@ -45,7 +45,7 @@ The fake board speaks the RedBoard's own dialect, acknowledges each command with
 the same 600 ms watchdog, and applies the same floor of 70 on a non-zero duty, so a command that
 would lurch on the bench lurches here too. With no lidar there is no map, which is the point: it exercises the degraded path. Point the dashboard at `ws://localhost:8080/ws`.
 
-To develop the parts that need a lidar without one, replay recorded scans through the real modules. `data/runs/room-scan.ndjson` carries 606 scans, each with the true pose it was taken from:
+To develop the parts that need a lidar without one, replay recorded scans through the real modules. `data/runs/room-scan.ndjson` carries 646 scans, each with the true pose it was taken from:
 
 ```python
 import json
@@ -60,7 +60,7 @@ for f in (x for x in frames if x['type'] == 'telem'):
         print(p.snapshot(), 'truth', f['x_mm'], f['y_mm'], f['heading_deg'])
 ```
 
-Measured against that fixture: the room comes out within 10 mm of true, position within 6 mm at p95, heading within 0.2 degrees, on 90% of scans; the other 10% report `pose:false` rather than guessing.
+Measured against that fixture: the room comes out within 10 mm of true, position within 6 mm at p95, heading within 0.2 degrees, on 91% of scans; the other 9% report `pose:false` rather than guessing.
 
 ## Check it
 

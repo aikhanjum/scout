@@ -116,7 +116,7 @@ const WATCHDOG_MS = 600;            // teleop: no drive for this long and the mo
 const PINCH_MS = 3000;              // a pinch closes after this long at the latest
 const PINCH_MIN_MS = 500;           // and is noise if it lasted less than this
 const OPEN_ROOM_MM = 2000;          // wider than this across the path is a room, not a gap
-export const CLAIM_MM = 1200;       // an obstacle this near has been scanned well enough to report
+export const CLAIM_MM = 650;        // an obstacle this near is reported: the camera's old stopping distance
 export const CLAIM_HOLD_MS = 1000;  // once it has been that near this long (PROTOCOL.md section 6, 1)
 
 // Distance from a point to the nearest edge of an axis-aligned obstacle, 0 inside it.
@@ -145,7 +145,7 @@ export class Sim {
     this.pinch = null;                          // { since, min, x, y, between } while inside a gap
     this.armed = true;                          // false after a pinch times out, until the gap opens
     this.named = new Set();                     // obstacles reported this run
-    this.nearby = new Map();                    // obstacle -> t it came within CLAIM_MM
+    this.nearby = new Map();                    // obstacle -> t it came within CLAIM_MM. Non-empty is `measuring`
     this.widths = [];                           // [x, y, mm] of every width verdict this run
     this.seq = 0;
     this.space = '';
@@ -188,8 +188,11 @@ export class Sim {
       ({ v, w } = this.follow(scan));
     }
 
-    // every obstacle Scout has come near, reported once (section 6, 1)
+    // every obstacle Scout has come near, reported once (section 6, 1). While one is being confirmed
+    // Scout holds still, as it did for the camera: drive is accepted, the motors do not turn, and it
+    // moves again on the tick the pin lands (section 6, 2).
     out.push(...this.claimNear(t));
+    if (this.nearby.size > 0) { v = 0; w = 0; }
 
     // move, keeping the body out of every surface: a blocked move just does not happen
     this.heading = wrap(this.heading + w * W_MAX * dt);
@@ -214,7 +217,7 @@ export class Sim {
     out.push(...this.pinchStep(t, clearance));
 
     out.push({
-      type: 'telem', t, mode: this.mode, measuring: false, lidar: true, scan, gaps: [],
+      type: 'telem', t, mode: this.mode, measuring: this.nearby.size > 0, lidar: true, scan, gaps: [],
       pose: true, x_mm: Math.round(this.x), y_mm: Math.round(this.y), heading_deg: Math.round(this.heading * 10) / 10,
       room: { w_mm: ROOM.w, l_mm: ROOM.l },
       clearance_mm: clearance.mm, bump: [0, 0], stuck: false, v: this.v, w: this.w,

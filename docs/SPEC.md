@@ -43,7 +43,7 @@ P0 first, across all workstreams, before any P1.
 | B4 | P0 | Test room | A rectangular room, roughly 4 by 5 m, with three obstacles: one blocking the wall-following lane, one leaving a gap under 860 mm, one clear of the lane. Tape-measure every one. |
 | F1 | P0 | Bridge firmware | `pio run -t upload`; monitor shows hello + 10 Hz lines; `D 0.4 0` drives and stops alone after 500 ms. |
 | P1 | P0 | Pi service on the Mac | Devices found by probing; `/status.devices` all true; dashboard shows the live scan. Unplug either device: its feature drops, the rest keeps going, replug recovers. |
-| P2 | P0 | Pose and map | Done on the simulator: room size within 10 mm of truth, position within 6 mm p95, 90% of scans placed, no false locks. Repeat in the real room: the drawn map matches a tape measure within 5 cm on both walls. |
+| P2 | P0 | Pose and map | Done on the simulator: room size within 10 mm of truth, position within 6 mm p95, 91% of scans placed, no false locks. Repeat in the real room: the drawn map matches a tape measure within 5 cm on both walls. |
 | P3 | P0 | Clearance | Done on the simulator: a 510 mm slot reads 504 mm. Repeat on the real gap: within 3 cm of a tape, five runs in a row, and no false `width_fail` at a bare corner. |
 | P4 | P0 | Wall following | Completes a lap of the test room without rescue, stops in front of each blocking obstacle, goes around it. |
 | P5 | -- | Camera labels | **Dropped 2026-09-19.** Scout carries no camera. Every obstacle is placed by the lidar and reported unnamed. |

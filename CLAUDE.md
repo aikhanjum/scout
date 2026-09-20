@@ -21,7 +21,7 @@ Position has no sensor behind it: there is no odometry and no IMU. There are two
 - **`slam` (the default)** — `pi/scout/slam.py` matches each scan against the map built so far, the way Hector SLAM does. Works in any shape of space, and **it drifts**: there is no loop closure, so error accumulates over a run. Reports `room: null`, and the map is drawn on a fixed canvas with the starting point at its centre. Needs numpy; without it the service falls back to `rect` and says so loudly.
 - **`rect`** — `pi/scout/pose.py` fits the rectangle of the room in every scan and reads position and heading off it. Cannot drift, but needs one closed rectangular room and nothing else.
 
-Measured on `data/runs/room-scan.ndjson` (606 scans, ground truth in every frame): slam holds pose on 99% of scans at 17 mm median error and ends the run 17 mm out. The rect fit manages 2.0 mm median in the rooms it can handle. **Quote the drift, not the 2 mm, whenever slam is the engine.**
+Measured on `data/runs/room-scan.ndjson` (646 scans, ground truth in every frame): slam holds pose on 100% of scans at 17 mm median error and ends the run 17 mm out. The rect fit manages 2.0 mm median in the rooms it can handle. **Quote the drift, not the 2 mm, whenever slam is the engine.**
 
 ## Workstreams and owners
 
@@ -97,7 +97,7 @@ data/rules.json         the width limit, its rule text and source
 
 - Read `docs/PROTOCOL.md` before touching code that sends or receives frames or serial lines. Match the keys exactly.
 - Pi service: Python 3.9+, pyserial + aiohttp, and numpy for `slam.py` only (without it the service falls back to `SCOUT_POSE=rect`). `pi/scout/rplidar.py` is vendored from `~/dev/lidar-gaps` (not a git repo); edit there first. Threads for the two serial devices, asyncio for the server, immutable snapshots instead of locks.
-- `pose.py` and `mapping.py` are the load-bearing algorithms and both have real failure modes documented in their docstrings. Test changes against a recorded run before the robot: `data/runs/room-scan.ndjson` carries 606 scans with ground-truth poses in every frame.
+- `pose.py` and `mapping.py` are the load-bearing algorithms and both have real failure modes documented in their docstrings. Test changes against a recorded run before the robot: `data/runs/room-scan.ndjson` carries 646 scans with ground-truth poses in every frame.
 - Firmware: the board is a SparkFun RedBoard (ATmega328P) running `06_serial_drive.ino`, owned by the firmware workstream and flashed from the Arduino IDE. It drives the shield's SN74HC595 directly with no library; do not reintroduce one. `firmware/` still holds the unused ESP32 bridge. The Pi never sees the difference: `pi/scout/redboard.py` is the only file that knows the board's dialect.
 - Dashboard: Vite + React + TypeScript, `zustand`, and a plain 2D canvas for the map. No three.js, no GLB. Chrome only. Vite `publicDir` is `../data`.
 - Tiger Data: only `tools/upload-run` touches the database, never the Pi service or the dashboard. The dashboard reads `data/history.json`. Simulated runs (fw `fake*`) are refused unless `--simulated` and are tagged so they never show by default.

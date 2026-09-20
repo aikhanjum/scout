@@ -62,10 +62,18 @@ class Scout:
         self.clients = set()
         self.tick = 0
         self.led_off_at = None
+        self._held = False          # motors stopped for a confirmation, until it clears
         self._last_scan = []
 
     def t(self):
         return int((time.monotonic() - self.t0) * 1000)
+
+    def confirming(self):
+        """`measuring` on the wire. It used to be the camera holding still to classify; now it is an
+        obstacle within claim range waiting out its one-second settle (mapping.claim_near). Scout
+        holds still for it, as it did for the camera: `drive` is accepted and not applied until the
+        obstacle is on the map (PROTOCOL.md section 6, behaviour 2)."""
+        return bool(self.pose.ok and self.grid.confirming())
 
     # ---- protocol ----
     def fw(self):
@@ -73,9 +81,7 @@ class Scout:
 
     def status(self):
         return {
-            # measuring was the camera's stop-and-classify pause. Scout has no camera, so it is
-            # always false; the key stays because the protocol has it.
-            "proto": 2, "fw": self.fw(), "mode": self.mode, "measuring": False,
+            "proto": 2, "fw": self.fw(), "mode": self.mode, "measuring": self.confirming(),
             "run": dict(self.run),
             # "esp32" is the wire key from protocol v2 and the dashboard still reads it; the
             # board behind it is now a RedBoard. "motor" is the same flag under its real name.
@@ -90,6 +96,8 @@ class Scout:
         k = c["cmd"]
         try:
             if k == "drive":
+                if self.confirming():
+                    return {"ok": True}                       # held still while an obstacle is confirmed
                 if not self.motor.connected:
                     return {"ok": False, "err": "motor board not connected"}
                 self.mode = "teleop"                          # a human taking over cancels roaming
@@ -189,7 +197,7 @@ class Scout:
         p = self.pose
         d = self.motor.drive
         return {
-            "type": "telem", "t": self.t(), "mode": self.mode, "measuring": False,
+            "type": "telem", "t": self.t(), "mode": self.mode, "measuring": self.confirming(),
             "lidar": bool(scan),
             "scan": scan if scan else [],
             "gaps": list(self.lidar.gaps) if scan else [],
@@ -246,6 +254,14 @@ class Scout:
             else:
                 self.pose.ok = False
 
+            # An obstacle being confirmed holds Scout still, as the camera used to: the stop is sent
+            # once on the way in, drive is ignored meanwhile, and the next drive after the pin lands
+            # moves it again (the dashboard resends every 100 ms while a key is held).
+            held = self.confirming()
+            if held and not self._held:
+                self.motor.send("S")
+            self._held = held
+
             width_mm, left, right = clearance(scan)
             frame = self.telem(scan, width_mm)
 
@@ -259,8 +275,8 @@ class Scout:
             for ev in self.audit.step(now, width_mm, place, self.lidar.gaps if scan else ()):
                 self.emit(ev)
 
-            # wall following
-            if self.mode == "wall_follow":
+            # wall following, except while holding still for a confirmation
+            if self.mode == "wall_follow" and not held:
                 v, w = self.follower.step(now, scan)
                 if self.motor.connected:
                     self.motor.send(f"D {_clamp(v):.2f} {_clamp(w):.2f}")

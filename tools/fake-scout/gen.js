@@ -55,12 +55,15 @@ function claim(x, y) {
     if (!nearby.has(o)) { nearby.set(o, t); continue; }
     if (t - nearby.get(o) < CLAIM_HOLD_MS) continue;
     reported.add(o);
+    nearby.delete(o);
     emit({ kind: 'obstacle', label: 'unknown', confidence: 0, photo: '',
            x_mm: Math.round((o.x0 + o.x1) / 2), y_mm: Math.round((o.y0 + o.y1) / 2) });
   }
 }
 
 function frame(x, y, heading, v, w) {
+  claim(x, y);                           // before the frame, so `measuring` describes this tick
+  if (nearby.size > 0) { v = 0; w = 0; } // holding still for a confirmation (section 6, 2)
   const scan = scanFrom(x, y, heading, jitter);
   grid.carve(x, y, heading, scan);
   // narrowest gap across the path: the pair of returns bounding the way ahead
@@ -68,7 +71,7 @@ function frame(x, y, heading, v, w) {
   lines.push({
     // gaps: [] on purpose. The gap finder is pi/scout/gaps.py and is not ported to JS; the
     // simulator supplies the rotation and the real robot supplies the openings found in it.
-    type: 'telem', t, mode: 'wall_follow', measuring: false, lidar: true, scan, gaps: [],
+    type: 'telem', t, mode: 'wall_follow', measuring: nearby.size > 0, lidar: true, scan, gaps: [],
     pose: true, x_mm: Math.round(x), y_mm: Math.round(y), heading_deg: Math.round(heading * 10) / 10,
     room: { w_mm: ROOM.w, l_mm: ROOM.l },
     clearance_mm: left && right ? left + right : 0,
@@ -77,7 +80,6 @@ function frame(x, y, heading, v, w) {
   // one map per 10 s, the cadence PROTOCOL.md section 7 gives a recorder: enough to watch the
   // room fill in on replay, without the grid dominating the file
   if (t - lastMap >= 10000) { lines.push(mapFrame(t)); lastMap = t; }
-  claim(x, y);
   t += 1000 / HZ;
 }
 
@@ -96,13 +98,17 @@ for (let i = 1; i < route.length; i++) {
   const delta = wrap(want - heading);
   const turnSteps = Math.round((Math.abs(delta) / TURN_RATE) * HZ);
   for (let s = 1; s <= turnSteps; s++) {
-    frame(px, py, heading + (delta * s) / turnSteps, 0, Math.sign(delta) * 0.35);
+    const h = heading + (delta * s) / turnSteps;
+    frame(px, py, h, 0, Math.sign(delta) * 0.35);
+    while (nearby.size > 0) frame(px, py, h, 0, 0);       // hold still until the pin lands
   }
   heading = want;
 
   const steps = Math.max(1, Math.round((dist / SPEED) * HZ));
   for (let s = 1; s <= steps; s++) {
-    frame(px + ((wp.x - px) * s) / steps, py + ((wp.y - py) * s) / steps, heading, CONFIG.cruise, 0);
+    const x = px + ((wp.x - px) * s) / steps, y = py + ((wp.y - py) * s) / steps;
+    frame(x, y, heading, CONFIG.cruise, 0);
+    while (nearby.size > 0) frame(x, y, heading, 0, 0);   // hold still until the pin lands
   }
   px = wp.x; py = wp.y;
 

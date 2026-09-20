@@ -73,8 +73,8 @@ Then a run:
 
 1. Put Scout on open floor. Slam, the default, takes its position from wherever it starts. The rectangle fitter (`SCOUT_POSE=rect`) needs all four walls in view, not nose to a wall, not behind the table: it reads the room off its first clean scan after a start, and a wall hidden at that moment locks in a wrong room for the whole run.
 2. Type the space name and press **Start run**. The tag beside the button reads **Finding position…** and then **Position locked**, or the room size under `rect`, which you check against the tape measure. **No position** after 5 s, or a wrong size, means press **Stop run**, move Scout, start again.
-3. Drive with the arrow keys or WASD.
-4. **Stop run** stops the motors and saves the run as an `.ndjson` replay file. **Download** gives the run report as one HTML page with the map in it, and the events, telemetry and map as CSV, at any time. The report is what you hand to a judge; the `.ndjson` is what replays.
+3. Drive with the arrow keys or WASD. Scout stops itself for a second beside each new obstacle, ring gold, then pins it and carries on; keep the key held.
+4. **Stop run** stops the motors and ends the recording. Nothing downloads by itself. **Download**, greyed out until the run is stopped, then gives the run report as one HTML page with the map in it, the `.ndjson` replay file, and the events, telemetry and map as CSV. The report is what you hand to a judge; the `.ndjson` is what replays.
 
 Reloading the page mid-run is safe: the dashboard sees the run is active and leaves Scout's map and room frame alone.
 

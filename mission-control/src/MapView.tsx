@@ -29,12 +29,12 @@ const colorFor = (k: ScoutEvent['kind']) =>
   k === 'width_fail' ? C.fail : k === 'width_pass' ? C.pass : k === 'ramp' ? C.ramp : C.obstacle;
 
 // What each marker says on the map. Short: the feed carries the full line.
-// The stamp beside a pin. An obstacle gets none: Scout has no camera to name it, and a map of
-// "unknown" stamps says nothing the grey block under the pin does not.
+// The stamp beside a pin. Scout has no camera to name an obstacle, so its stamp says what the pin
+// is rather than what the thing is. A real label (an older recording) is shown when there is one.
 const tagFor = (e: ScoutEvent) =>
   e.kind === 'width_fail' || e.kind === 'width_pass' ? `${e.value} mm`
     : e.kind === 'mark' ? (e.label || 'mark')
-      : e.label && e.label !== 'unknown' ? e.label : '';
+      : e.label && e.label !== 'unknown' ? e.label : e.kind === 'ramp' ? 'ramp' : 'obstacle';
 
 type Room = { w_mm: number; l_mm: number };
 
@@ -184,7 +184,8 @@ function draw(cv: HTMLCanvasElement, map: MapFrame | null, telem: Telem | null, 
   }
 
   // Scout: the logo in a round badge, with a tick for heading and an arc ahead for how far the way
-  // is clear (the nearest return within RANGE_DEG, capped at RANGE_MM).
+  // is clear (the nearest return within RANGE_DEG, capped at RANGE_MM). The ring turns gold while an
+  // obstacle nearby is being confirmed (`measuring`), just before its pin lands.
   if (telem?.pose) {
     const a = (telem.heading_deg * Math.PI) / 180;
     const x = px(telem.x_mm), y = py(telem.y_mm), r = 17;
@@ -206,7 +207,7 @@ function draw(cv: HTMLCanvasElement, map: MapFrame | null, telem: Telem | null, 
     if (ROBOT.complete && ROBOT.naturalWidth) g.drawImage(ROBOT, x - r, y - r, 2 * r, 2 * r);
     else { g.fillStyle = C.robot; g.beginPath(); g.arc(x, y, r * 0.6, 0, Math.PI * 2); g.fill(); }
     g.restore();
-    g.strokeStyle = C.ink; g.lineWidth = 1.5;
+    g.strokeStyle = telem.measuring ? C.robot : C.ink; g.lineWidth = telem.measuring ? 3 : 1.5;
     g.beginPath(); g.arc(x, y, r, 0, Math.PI * 2); g.stroke();
   }
 

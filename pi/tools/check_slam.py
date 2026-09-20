@@ -3,7 +3,7 @@
 
     cd pi && .venv/bin/python tools/check_slam.py
 
-`data/runs/room-scan.ndjson` carries 606 scans at 10 Hz with the true pose in *every* frame, so it
+`data/runs/room-scan.ndjson` carries 646 scans at 10 Hz with the true pose in *every* frame, so it
 is free ground truth: replay the scans through `slam.Slam`, ignore the truth except to score
 against it, and see what comes out.
 

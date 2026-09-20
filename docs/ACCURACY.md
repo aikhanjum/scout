@@ -46,6 +46,12 @@ Next attempt, to change one thing at a time: a slow walk, lidar held clear of th
 
 Verdict after three real attempts (brisk corridor, slow corridor, small room): SLAM did not follow the lidar in any of them. Do not demo a live map from it. Clearance verdicts are real when nothing is beside the sensor: carry it on a box or a flat palm from below, never by the sides.
 
+## Tried and failed, so nobody repeats it: BreezySLAM (CoreSLAM/tinySLAM, RMHC), offline on the same recordings
+
+No odometry, 800 px / 20 m map, defaults, 1 ms per scan. Return-to-start on the room loop: **3.1 m** (true: 0). Walk 2: **12.4 m** from the start after the return, farthest 12.4 m on an 11 to 15 m route. Same failure as `slam.py`, a different matcher. In its C code a distance of 0 is "no obstacle to max range", which carves free space through the walls that did not reflect (half the beams here). Not installed in the repo.
+
+Conclusion for this hardware: without a motion source (wheel encoders or a gyro) no scan matcher we tried holds a position in these spaces. Position, and therefore the map, is out of scope until odometry exists. The live lidar view and the width verdict need no position and are unaffected.
+
 ## Lidar, what it sees
 
 - Empty beams: 31% of the ring at the desk, 65% in the corridor. The clearance audit refuses a side that is more than 60% empty, so it produced a number on 100% of frames in the desk doorway and on 12% of frames along the corridor.

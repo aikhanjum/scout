@@ -1,84 +1,41 @@
-import { useEffect, useRef, useState } from 'react';
-import { useStore } from './store';
-import { connect } from './scout';
-import { Live } from './Live';
-import logo from './assets/scout-256.png';
+import { useEffect, useState } from 'react';
+import { Terminal } from './Terminal';
+import { MapTab } from './MapTab';
+import { TigerTab } from './TigerTab';
+import { EyeView } from './EyeView';
 
-const DEFAULT_URL = 'ws://localhost:8080/ws';
-const LIVE: [string, string][] = [[DEFAULT_URL, 'Live: this laptop'], ['ws://scout.local:8080/ws', 'Live: scout.local']];
+// One URL, four screens. ?view=terminal|map|tiger|eye. A narrow screen (a phone that scanned the
+// QR code) gets Scout's eyes full-screen unless it asks for something else.
+export type View = 'terminal' | 'map' | 'tiger' | 'eye';
 
-export function App() {
-  return (
-    <>
-      <header className="top">
-        <div className="brand">
-          <img src={logo} width={40} height={40} alt="" />
-          <div><h1 translate="no">Scout</h1><small>Mission Control</small></div>
-        </div>
-        <SourceBar />
-      </header>
-      <main><Live /></main>
-    </>
-  );
+export function currentView(): View {
+  const v = new URLSearchParams(location.search).get('view');
+  if (v === 'terminal' || v === 'map' || v === 'tiger' || v === 'eye') return v;
+  return window.matchMedia('(max-width: 700px)').matches ? 'eye' : 'terminal';
 }
 
-// Where frames come from: one picker, always visible so it can be swapped mid-demo.
-// A live Scout (two known addresses or a typed one), a recorded run, or a file from disk.
-function SourceBar() {
-  const { source, link, detail, voice, set } = useStore();
-  const [runs, setRuns] = useState<string[]>([]);
-  const file = useRef<HTMLInputElement>(null);
+export function setView(v: View) {
+  const u = new URL(location.href);
+  u.searchParams.set('view', v);
+  history.pushState(null, '', u);
+  window.dispatchEvent(new Event('viewchange'));
+}
+
+export function useView(): View {
+  const [v, setV] = useState<View>(currentView);
   useEffect(() => {
-    fetch('/runs/index.json').then((r) => r.json()).then((list: string[]) => setRuns(list)).catch(() => setRuns([]));
+    const on = () => setV(currentView());
+    window.addEventListener('popstate', on);
+    window.addEventListener('viewchange', on);
+    return () => { window.removeEventListener('popstate', on); window.removeEventListener('viewchange', on); };
   }, []);
+  return v;
+}
 
-  const current = source.kind === 'live' ? source.url : `run:${source.name}`;
-  const known = source.kind === 'live' ? LIVE.some(([u]) => u === source.url) : runs.includes(source.name);
-  const pick = (v: string) => {
-    if (v === 'custom') {
-      const url = window.prompt('Scout WebSocket URL', source.kind === 'live' ? source.url : DEFAULT_URL)?.trim();
-      if (!url) return;
-      try { localStorage.setItem('scout.url', url); } catch { /* fine */ }
-      connect({ kind: 'live', url });
-    } else if (v === 'file') {
-      file.current?.click();
-    } else if (v.startsWith('run:')) {
-      connect({ kind: 'replay', name: v.slice(4) });
-    } else {
-      try { localStorage.setItem('scout.url', v); } catch { /* fine */ }
-      connect({ kind: 'live', url: v });
-    }
-  };
-
-  // Only what is wrong, or worth saying out loud on stage. A healthy live link shows nothing:
-  // a dropped one raises the alert over the map, which is louder than a badge that is always there.
-  const badge = source.kind === 'replay' ? { text: 'Replay', cls: 'warn' }
-    : link === 'up' ? null : { text: 'Link down', cls: 'bad live' };
-  return (
-    <>
-      <span className="status" role="status">
-        {badge && <span className={`tag ${badge.cls}`}>{badge.text}</span>}
-        {detail && <span className="detail" title={detail}>{detail}</span>}
-      </span>
-      <div className="source">
-        <label className="field">Source
-          <select value={current} onChange={(e) => { pick(e.target.value); e.target.blur(); }} name="source">
-            <optgroup label="Live">
-              {LIVE.map(([u, name]) => <option key={u} value={u}>{name}</option>)}
-              {source.kind === 'live' && !known && <option value={source.url}>Live: {source.url}</option>}
-              <option value="custom">Live: other address…</option>
-            </optgroup>
-            <optgroup label="Replay">
-              {runs.map((r) => <option key={r} value={`run:${r}`}>{r}</option>)}
-              {source.kind === 'replay' && !known && <option value={`run:${source.name}`}>{source.name}</option>}
-              <option value="file">Open a file…</option>
-            </optgroup>
-          </select>
-        </label>
-        <input ref={file} type="file" accept=".ndjson,.txt" name="replay-file" hidden
-          onChange={async (e) => { const f = e.target.files?.[0]; if (f) connect({ kind: 'replay', name: f.name, text: await f.text() }); e.target.value = ''; }} />
-        <label className="field check"><input type="checkbox" name="voice" checked={voice} onChange={(e) => set({ voice: e.target.checked })} /> Voice</label>
-      </div>
-    </>
-  );
+export function App() {
+  const view = useView();
+  if (view === 'eye') return <EyeView />;
+  if (view === 'map') return <MapTab />;
+  if (view === 'tiger') return <TigerTab />;
+  return <Terminal />;
 }

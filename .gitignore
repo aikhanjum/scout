@@ -23,3 +23,4 @@ pi/tools/scan-dump.json
 # Claude skills tooling
 .agents/
 skills-lock.json
+data/live/

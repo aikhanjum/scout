@@ -170,3 +170,6 @@ main { padding: 16px 20px 24px; display: grid; gap: 16px; }
 @media (prefers-reduced-motion: reduce) {
   *, ::before, ::after { animation: none !important; transition: none !important; }
 }
+
+/* stubs while the terminal is being built; every stub is replaced before the demo */
+.stub { padding: 8px; border: 1px dashed #888; font-family: ui-monospace, Menlo, monospace; font-size: 13px; }

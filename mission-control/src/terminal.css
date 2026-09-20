@@ -147,6 +147,14 @@ html[data-view="terminal"] body { margin: 0; background: #0b0d10; color: #d7dde5
 .term .hist tr:last-child td { border-bottom: 0; }
 .term .hist .red { color: var(--red); } .term .hist .green { color: var(--green); } .term .hist .muted { color: var(--dim); }
 
+/* shorter screens: the same grid, tighter key/value rows so STATUS and LIDAR HEALTH still fit */
+@media (max-height: 760px) {
+  .term .kv { line-height: 16px; }
+  .term .stripx { display: none; }
+}
+@media (max-height: 700px) {
+  .term .kv { line-height: 15px; padding-top: 2px; padding-bottom: 2px; }
+}
 /* smaller laptops: the same grid, tighter type */
 @media (max-width: 1200px) {
   .term { font-size: 11px; }

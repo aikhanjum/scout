@@ -77,9 +77,9 @@ export function Terminal() {
     <div className="term">
       <header className="th">
         <span className="brand">SCOUT</span>
-        <span className="sep">|</span>
+        <span className="sep">·</span>
         <Tabs />
-        <span className="sep">|</span>
+        <span className="sep">·</span>
         <SourceBar />
         <span className={`badge ${badge[1]}`} role="status">{badge[0]}</span>
         <Clock />

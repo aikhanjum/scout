@@ -159,7 +159,7 @@ docs/             protocol, spec, accuracy log, demo runbook, what was cut and w
 
 ## Team
 
-[Aikhan Jumashukurov](https://github.com/aikhanjum) · [Ryan Li](https://github.com/ryanli0070) · [Caden Sun](https://github.com/Quaden2307) · Aidan
+[Aikhan Jumashukurov](https://github.com/aikhanjum) · [Ryan Li](https://github.com/ryanli0070) · [Caden Sun](https://github.com/Quaden2307) · [Aidan Schreder](https://github.com/AidanSchreder) 
 
 ## What's next
 

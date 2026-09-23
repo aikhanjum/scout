@@ -1,5 +1,10 @@
 # Scout pin map and power
 
+> **Superseded in part.** The ESP32 never arrived. The robot that ran at the demo uses a SparkFun RedBoard
+> (ATmega328P) with a DK Electronics motor shield (2x L293D), so the "no motor driver" item below is closed.
+> Current wiring and power are in [`docs/HANDOFF-REDBOARD.md`](../docs/HANDOFF-REDBOARD.md) sections 4 and 6
+> and [`docs/PROTOCOL.md`](../docs/PROTOCOL.md) section 9. The ESP32 pinout below is kept for reference.
+
 Frozen with `firmware/src/config.h`. Change both together.
 
 ## Two things are still open
